@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "lumora"
+version = "0.1.0"
+description = "AI agent that onboards developers to any GitHub repository"
+authors = ["Anshu"]
+readme = "README.md"
+packages = [{ include = "lumora" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.30.0" }
+pydantic-settings = "^2.4.0"
+sqlalchemy = "^2.0.0"
+alembic = "^1.13.0"
+psycopg = { extras = ["binary"], version = "^3.2.0" }
+redis = "^5.0.0"
+celery = "^5.4.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+httpx = "^0.27.0"
+ruff = "^0.6.0"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
