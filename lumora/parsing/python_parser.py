@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from typing import List,Dict,Any,Optional
 
@@ -18,7 +19,7 @@ def extract_docstring(node:Any,source_bytes:bytes)-> Optional[str]:
             return doc.strip(" '\"")
     return None
 
-def extract_functions_and_classes(file_path: str) -> List[Dict[str, Any]]:
+def extract_functions_and_classes(file_path: str, repo_root: str = "") -> List[Dict[str, Any]]:
     if not os.path.exists(file_path):
         return []
     try:
@@ -26,9 +27,16 @@ def extract_functions_and_classes(file_path: str) -> List[Dict[str, Any]]:
             source_bytes = f.read()
     except IOError:
         return []
-    tree = PARSER.parse(source_bytes)
-    results = []
+    try:
+        tree = PARSER.parse(source_bytes)
+    except Exception:
+        return []
 
+    results = []
+    try:
+        rel_path = str(Path(file_path).resolve().relative_to(Path(repo_root).resolve())) if repo_root else file_path
+    except ValueError:
+        rel_path = file_path
     stack = [(tree.root_node, "")]
     while stack:
         node, parent_prefix = stack.pop()
@@ -39,29 +47,24 @@ def extract_functions_and_classes(file_path: str) -> List[Dict[str, Any]]:
         if is_target:
             name_node = node.child_by_field_name("name")
             name = (
-                source_bytes[name_node.start_byte:name_node.end_byte].decode(
-                    "utf-8", errors="ignore"
-                )
-                if name_node
-                else "unknown"
+                source_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="ignore")
+                if name_node else "unknown"
             )
             full_name = f"{parent_prefix}.{name}" if parent_prefix else name
             docstring = extract_docstring(node, source_bytes)
             node_kind = (
-                "method"
-                if (parent_prefix and current_type == "function_definition")
+                "method" if (parent_prefix and current_type == "function_definition")
                 else current_type.replace("_definition", "")
             )
             results.append({
                 "type": node_kind,
                 "name": full_name,
                 "short_name": name,
+                "file_path": rel_path,
                 "start_line": node.start_point[0] + 1,
                 "end_line": node.end_point[0] + 1,
                 "docstring": docstring,
-                "code": source_bytes[node.start_byte:node.end_byte].decode(
-                    "utf-8", errors="ignore"
-                ),
+                "code": source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="ignore"),
             })
             if current_type == "class_definition":
                 next_parent_prefix = full_name
