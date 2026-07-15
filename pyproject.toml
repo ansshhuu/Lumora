@@ -18,6 +18,7 @@ redis = "^5.0.0"
 celery = "^5.4.0"
 gitpython = "^3.1.50"
 tree-sitter-language-pack = "^1.12.5"
+qdrant-client = "^1.18.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
