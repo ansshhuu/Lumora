@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{ include = "lumora" }]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.10,<3.15"
 fastapi = "^0.115.0"
 uvicorn = { extras = ["standard"], version = "^0.30.0" }
 pydantic-settings = "^2.4.0"
@@ -19,6 +19,8 @@ celery = "^5.4.0"
 gitpython = "^3.1.50"
 tree-sitter-language-pack = "^1.12.5"
 qdrant-client = "^1.18.0"
+voyageai = "^0.5.0"
+python-dotenv = "^1.2.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
