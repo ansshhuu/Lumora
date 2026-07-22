@@ -16,7 +16,7 @@ client=get_qdrant_client()
 
 def create_collection(
     name:str,
-    vector_size:int=1536,
+    vector_size:int=1024,
     force_recreate: bool= False,
     custom_client: Optional[QdrantClient] = None
 ):
