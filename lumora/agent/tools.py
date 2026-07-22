@@ -1,8 +1,4 @@
-"""
-Week 3 Day 1 — Agent tools.
 
-Wraps the Week 2 search/parse pipeline as LangChain tools the agent can call.
-"""
 from langchain_core.tools import tool
 
 from lumora.embeddings.search import search_code as search_codebase
