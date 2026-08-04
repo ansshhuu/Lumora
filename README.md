@@ -168,10 +168,10 @@ lumora/
 - [ ] Index a repository end-to-end for the first time
 
 ### Phase 2 — AI Agent
-- [ ] Set up the reasoning agent using LangGraph
-- [ ] Build tools: code search, structure lookup, file tree, dependency map
+- [x] Set up the reasoning agent using LangGraph
+- [x] Build tools: code search, structure lookup, file tree *(dependency map not built — `fetch_file` + reasoning covers "what does X depend on" questions today, but there's no dedicated import-graph tool)*
 - [ ] Add conversation memory so follow-up questions work
-- [ ] Answer a real question about a real repository end-to-end
+- [x] Answer a real question about a real repository end-to-end
 
 ### Phase 3 — Better Search
 - [ ] Combine meaning-based, keyword, and structure-based search
