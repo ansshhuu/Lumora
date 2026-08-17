@@ -162,7 +162,7 @@ lumora/
 - [x] Automated checks via GitHub Actions — code quality, tests, and releases
 - [x] Test structure for unit and integration tests
 - [x] Contribution guide and MIT License
-- [ ] Basic API with a working health check endpoint
+- [x] Basic API with a working health check endpoint
 - [ ] Connect to Qdrant and run a simple code search
 - [ ] Read and understand Python file structure using tree-sitter
 - [ ] Index a repository end-to-end for the first time
@@ -174,6 +174,9 @@ lumora/
 - [x] Answer a real question about a real repository end-to-end
 
 ### Phase 3 — Better Search
+- [x] API key authentication on every endpoint (`X-API-Key` header)
+- [x] Per-IP rate limiting on `/index` and `/query`
+- [x] Health check endpoint reporting Qdrant connectivity
 - [ ] Combine meaning-based, keyword, and structure-based search
 - [ ] Support additional languages — JavaScript, Go, Java
 - [ ] Add caching to speed up repeated queries
@@ -241,6 +244,26 @@ make build      # Build Docker images
 make up         # Start all services
 make down       # Stop all services
 ```
+
+---
+
+## 🔌 API Endpoints
+
+Full interactive reference (request/response schemas, try-it-out) is auto-generated at
+`http://localhost:8000/docs` once the server is running. Summary:
+
+Every endpoint below requires an `X-API-Key` header matching the `API_KEY` (or `SECRET_KEY`)
+env var — missing or wrong key returns `401`. `/index` and `/query` are additionally rate
+limited per-IP to `RATE_LIMIT_PER_MINUTE` (default 20/minute) — exceeding it returns `429`.
+
+| Method & Path | Description | Notable responses |
+|---|---|---|
+| `GET /health` | Checks connectivity to Qdrant. | `200` ok · `503` Qdrant unreachable |
+| `POST /index` | Clones a public GitHub repo, parses it, and embeds it into a Qdrant collection. Body: `{"repo_url": "https://github.com/<owner>/<repo>"}`. | `400` invalid URL or repo exceeds `MAX_REPO_SIZE_MB` · `500` indexing failed |
+| `POST /query` | Asks the reasoning agent a question against an indexed collection. Body: `{"question": "...", "collection": "<name>"}`. | `404` collection not found · `504` agent exceeded `QUERY_TIMEOUT_SECONDS` · `500` agent failed |
+
+All error responses are generic JSON (`{"detail": "..."}` or `{"error": "..."}`) — unhandled
+exceptions are logged server-side with a full traceback and never echoed back to the client.
 
 ---
 

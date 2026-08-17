@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import shutil
@@ -36,18 +37,11 @@ def _dir_size_mb(path: Path) -> float:
     return total_bytes / (1024 * 1024)
 
 
-@router.post("/index", response_model=IndexResponse, dependencies=[Depends(require_api_key)])
-@limiter.limit(RATE_LIMIT)
-def index_repo(request: Request, body: IndexRequest) -> IndexResponse:
-    if not validate_repo_url(body.repo_url):
-        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
-
-    collection = _collection_name(body.repo_url)
-    destination = CLONE_BASE_DIR / collection
-
+def _run_indexing(repo_url: str, collection: str, destination: Path) -> int:
+    """Blocking clone/walk/parse/embed pipeline. Runs off the event loop via asyncio.to_thread."""
     try:
         if not destination.exists():
-            clone_repo(body.repo_url, str(destination))
+            clone_repo(repo_url, str(destination))
 
         size_mb = _dir_size_mb(destination)
         if size_mb > MAX_REPO_SIZE_MB:
@@ -73,9 +67,25 @@ def index_repo(request: Request, body: IndexRequest) -> IndexResponse:
     except HTTPException:
         raise
     except Exception:
-        logger.exception("Indexing failed for repo_url=%s", body.repo_url)
+        logger.exception("Indexing failed for repo_url=%s", repo_url)
         raise HTTPException(status_code=500, detail="Failed to index repository")
 
+    return len(all_items)
+
+
+@router.post("/index", response_model=IndexResponse, dependencies=[Depends(require_api_key)])
+@limiter.limit(RATE_LIMIT)
+async def index_repo(request: Request, body: IndexRequest) -> IndexResponse:
+    if not validate_repo_url(body.repo_url):
+        raise HTTPException(status_code=400, detail="Invalid GitHub repository URL")
+
+    collection = _collection_name(body.repo_url)
+    destination = CLONE_BASE_DIR / collection
+
+    items_count = await asyncio.to_thread(
+        _run_indexing, body.repo_url, collection, destination
+    )
+
     return IndexResponse(
-        status="indexed", collection=collection, items_count=len(all_items)
+        status="indexed", collection=collection, items_count=items_count
     )
