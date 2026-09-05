@@ -1,0 +1,35 @@
+# Version control
+.git
+.github
+.gitignore
+
+# Local virtualenvs — never ship the host's interpreter into the image
+venv
+.venv
+
+# Python bytecode / caches
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Test + coverage artifacts
+.coverage
+htmlcov
+coverage.xml
+
+# Local data that lives in volumes, not in the image
+qdrant_storage
+cloned_repos
+repos
+test_repos
+
+# Secrets — compose injects these at runtime via env_file
+.env
+
+# Docs
+README.md
+CONTRIBUTING.md
+LICENSE

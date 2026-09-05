@@ -1,0 +1,54 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    image: lumora-api:local
+    ports:
+      # Host port is overridable so the stack does not collide with anything
+      # else already bound to 8000 on the developer's machine.
+      - "${API_PORT:-8000}:8000"
+    # Keys and limits come from .env — nothing secret is baked into the image
+    # or committed here.
+    env_file:
+      - .env
+    environment:
+      # Overrides the .env default of localhost: inside the compose network
+      # Qdrant is reachable at its service name, not on the API's loopback.
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      # Cloned repositories survive container restarts, so re-indexing the same
+      # repo does not re-clone it.
+      - cloned_repos:/app/cloned_repos
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # /health probes Qdrant reachability and needs no credentials.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.1
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    healthcheck:
+      # The image is distroless — no curl, no shell utilities — so the probe
+      # uses Qdrant's own binary against its readiness endpoint.
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  qdrant_data:
+  cloned_repos:

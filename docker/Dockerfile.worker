@@ -1,0 +1,10 @@
+# Intentionally unimplemented.
+#
+# Indexing currently runs inline in the API process (lumora/api/routes/index.py
+# offloads the blocking clone/parse/embed pipeline with asyncio.to_thread), so a
+# separate worker container would have no queue to consume. Celery and redis are
+# declared in pyproject.toml but nothing dispatches to them yet.
+#
+# Split this out when indexing needs to outlive a request: add a broker service
+# to docker-compose.yml, move _run_indexing behind a Celery task, and build this
+# stage from the same base as docker/Dockerfile.api with a celery worker CMD.

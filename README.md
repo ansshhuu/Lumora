@@ -138,12 +138,12 @@ lumora/
 │       └── sample_repo/        # Small committed repo used by integration tests
 │
 ├── docker/
-│   ├── Dockerfile.api          # Container for the web API
-│   ├── Dockerfile.worker       # Container for background indexing jobs
-│   └── Dockerfile.sandbox      # Isolated container for safe code processing
+│   ├── Dockerfile.api          # Container for the web API (multi-stage build)
+│   ├── Dockerfile.worker       # Placeholder — indexing runs in the API for now
+│   └── Dockerfile.sandbox      # Placeholder — not yet implemented
 │
-├── docker-compose.yml          # Runs all services together
-├── docker-compose.dev.yml      # Development configuration with auto-reload
+├── docker-compose.yml          # Runs the API and Qdrant together
+├── docker-compose.dev.yml      # Placeholder — not yet implemented
 ├── pyproject.toml              # Dependencies and tool configuration
 ├── .env.example                # Template for required environment variables
 ├── CONTRIBUTING.md             # Guide for contributors
@@ -160,7 +160,7 @@ lumora/
 
 ### Phase 1 — Foundation
 - [x] Project structure and dependency management with Poetry
-- [x] Docker containers for API, background worker, and sandbox
+- [x] Docker container for the API, with Qdrant wired up via Compose *(worker and sandbox images are still empty placeholders)*
 - [x] Automated checks via GitHub Actions — lint and tests *(release and Docker-build workflows are still empty placeholders)*
 - [x] Test structure for unit and integration tests
 - [x] Contribution guide and MIT License
@@ -215,18 +215,26 @@ cd Lumora
 # Set up your environment variables
 cp .env.example .env
 
-# Start all services
-docker-compose up --build
+# Fill in COHERE_API_KEY, GROQ_API_KEY and API_KEY in .env, then start everything
+docker compose up --build
 ```
 
 Once running, open `http://localhost:8000/docs` in your browser to see the API.
 
+If port 8000 or 6333 is already taken on your machine, set `API_PORT` or
+`QDRANT_HTTP_PORT` in `.env` — no other change is needed.
+
+Common tasks are wrapped in the Makefile: `make up`, `make down`, `make build`,
+`make test`, `make lint`, and `make clean` (which also deletes indexed data).
+
 ### Development Mode
 
-For local development with automatic reload on file changes:
+`docker-compose.dev.yml` is still an empty placeholder. For an auto-reloading
+API, run it outside Docker against the Compose-managed Qdrant:
 
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+docker compose up -d qdrant
+poetry run uvicorn lumora.api.main:app --reload
 ```
 
 ### Running Tests
@@ -316,9 +324,9 @@ If you split a file into chunks by character count, you might cut a function in 
 </details>
 
 <details>
-<summary><b>Why are there three separate Docker containers?</b></summary>
+<summary><b>Why is there only one application container?</b></summary>
 
-Each container has a specific job. The API container handles user requests. The worker container handles the slower task of downloading and indexing repositories in the background, so the API stays fast. The sandbox container processes code in an isolated environment for safety. Keeping them separate also makes it easier to scale or update each one independently.
+Today the stack runs two services: the API and Qdrant. Indexing happens inside the API process, which offloads the slow clone-parse-embed work to a background thread so requests are not blocked. Separate worker and sandbox images are planned — `docker/Dockerfile.worker` and `docker/Dockerfile.sandbox` are placeholders — and splitting them out only pays off once indexing needs to outlive a request, which needs a queue in front of it. Building those containers before anything dispatches to them would add moving parts with nothing to run.
 
 </details>
 

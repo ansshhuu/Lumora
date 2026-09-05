@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1
+
+# ---------------------------------------------------------------------------
+# Stage 1 — builder: resolve and install dependencies into a self-contained
+# virtualenv. Compilers and Poetry itself live only here and never reach the
+# runtime image.
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    POETRY_VERSION=1.8.5 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=true \
+    POETRY_VIRTUALENVS_IN_PROJECT=true
+
+# build-essential: some wheels (tree-sitter, psycopg) fall back to a source
+# build on slim. git: GitPython shells out to it, and it is needed here only if
+# a dependency resolves to a VCS ref.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install "poetry==${POETRY_VERSION}"
+
+WORKDIR /app
+
+# Copy only the lockfiles first so dependency installation is cached and does
+# not re-run on every source edit.
+COPY pyproject.toml poetry.lock ./
+
+# --no-root: the project itself is installed by copying source in the runtime
+# stage, so the dependency layer stays independent of application code.
+RUN poetry install --only main --no-root
+
+# ---------------------------------------------------------------------------
+# Stage 2 — runtime: slim image carrying the prebuilt venv and the source only.
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+# git is a runtime dependency: the indexing pipeline clones repositories with
+# GitPython, which invokes the git binary.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Run as an unprivileged user; it owns the clone directory it has to write to.
+RUN useradd --create-home --uid 1000 lumora
+
+WORKDIR /app
+
+COPY --from=builder --chown=lumora:lumora /app/.venv /app/.venv
+COPY --chown=lumora:lumora lumora ./lumora
+
+# Repositories are cloned here at request time. Declared before the volume is
+# mounted so ownership is correct on a fresh named volume.
+RUN mkdir -p /app/cloned_repos && chown lumora:lumora /app/cloned_repos
+
+USER lumora
+
+EXPOSE 8000
+
+CMD ["uvicorn", "lumora.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
