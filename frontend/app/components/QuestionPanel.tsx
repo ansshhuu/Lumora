@@ -12,15 +12,17 @@ const SUGGESTIONS = [
 
 interface QuestionPanelProps {
   onSubmit?: (query: string) => void;
+  /** True while a query is in-flight — disables submission to prevent double-sends. */
+  disabled?: boolean;
 }
 
-export default function QuestionPanel({ onSubmit }: QuestionPanelProps) {
+export default function QuestionPanel({ onSubmit, disabled = false }: QuestionPanelProps) {
   const [query, setQuery] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function handleSubmit() {
     const trimmed = query.trim();
-    if (!trimmed) return;
+    if (!trimmed || disabled) return;
     onSubmit?.(trimmed);
   }
 
@@ -32,6 +34,7 @@ export default function QuestionPanel({ onSubmit }: QuestionPanelProps) {
   }
 
   function fillSuggestion(text: string) {
+    if (disabled) return;
     setQuery(text);
     textareaRef.current?.focus();
   }
@@ -60,10 +63,13 @@ export default function QuestionPanel({ onSubmit }: QuestionPanelProps) {
             onKeyDown={handleKeyDown}
             placeholder="ask anything about this codebase"
             rows={6}
+            disabled={disabled}
             className="w-full resize-none bg-transparent text-[var(--paper)] text-sm leading-relaxed px-3 py-3 pr-10 placeholder:text-[var(--ghost)] focus:outline-none"
             style={{
               fontFamily: "var(--font-ibm-plex-mono, monospace)",
               borderRadius: "4px",
+              opacity: disabled ? 0.5 : 1,
+              transition: "opacity 0.15s ease",
             }}
             aria-label="Query input"
           />
@@ -71,8 +77,10 @@ export default function QuestionPanel({ onSubmit }: QuestionPanelProps) {
           <button
             id="send-query-btn"
             onClick={handleSubmit}
+            disabled={disabled}
             aria-label="Submit query"
             className="absolute bottom-3 right-3 text-[var(--paper)] opacity-50 hover:opacity-100 transition-opacity duration-150 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--signal)] focus-visible:outline-offset-2 rounded-sm p-0.5"
+            style={{ cursor: disabled ? "default" : "pointer" }}
           >
             <CornerDownLeft size={15} strokeWidth={1.5} />
           </button>

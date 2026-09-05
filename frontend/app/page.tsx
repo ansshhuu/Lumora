@@ -4,81 +4,45 @@ import { useState } from "react";
 import QuestionPanel from "./components/QuestionPanel";
 import TracePanel from "./components/TracePanel";
 import ConnectRepo, { ActiveRepo } from "./components/ConnectRepo";
-import { TraceStep, TraceAnswer } from "@/lib/types";
+import { TraceAnswer } from "@/lib/types";
+import { queryRepo, isQueryError } from "@/lib/api";
 
-/* ─── Hardcoded mock data ──────────────────────────────────────────────── */
-const MOCK_STEPS: TraceStep[] = [
-  {
-    id: "1",
-    toolName: "search_codebase",
-    description: "searching for session redirect handling",
-    status: "done",
-    elapsedSeconds: 0.6,
-  },
-  {
-    id: "2",
-    toolName: "search_codebase",
-    description: "expanding search to middleware layer",
-    status: "done",
-    elapsedSeconds: 0.4,
-  },
-  {
-    id: "3",
-    toolName: "fetch_file: src/middleware/auth.middleware.ts",
-    description: "reading authentication middleware",
-    status: "done",
-    elapsedSeconds: 0.3,
-  },
-  {
-    id: "4",
-    toolName: "search_codebase",
-    description: "looking for redirect() call sites",
-    status: "done",
-    elapsedSeconds: 0.5,
-  },
-  {
-    id: "5",
-    toolName: "fetch_file: src/lib/session.ts",
-    description: "reading session utility",
-    status: "active",
-    elapsedSeconds: undefined,
-  },
-  {
-    id: "6",
-    toolName: "synthesize_answer",
-    description: "composing final response",
-    status: "pending",
-    elapsedSeconds: undefined,
-  },
-];
-
-const MOCK_ANSWER: TraceAnswer = {
-  text: "Unauthorized access is handled in the authentication middleware. When a request arrives, the middleware calls",
-  citation: {
-    file: "src/middleware/auth.middleware.ts",
-    lineStart: 42,
-    lineEnd: 48,
-  },
-  codeExcerpt: {
-    startLine: 42,
-    code: `export async function authMiddleware(req: Request) {
-  const session = await getSession(req)
-  if (!session?.userId) {
-    return redirect('/login')
-  }
-  return next()
-}`,
-  },
-};
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
 /* ─── Page ─────────────────────────────────────────────────────────────── */
 export default function Home() {
-  const [_query, setQuery] = useState("");
   const [activeRepo, setActiveRepo] = useState<ActiveRepo | null>(null);
+
+  // Query state — no mock data, all real.
+  const [thinking, setThinking] = useState(false);
+  const [answer, setAnswer] = useState<TraceAnswer | undefined>(undefined);
+  const [queryError, setQueryError] = useState<string | null>(null);
 
   // No repo connected yet — show the connect screen.
   if (!activeRepo) {
     return <ConnectRepo onConnected={setActiveRepo} />;
+  }
+
+  async function handleQuestion(question: string) {
+    if (thinking) return; // prevent double-submit while in-flight
+
+    // Clear stale state before starting a new request.
+    setAnswer(undefined);
+    setQueryError(null);
+    setThinking(true);
+
+    const result = await queryRepo(question, activeRepo!.collection, API_KEY);
+
+    setThinking(false);
+
+    if (isQueryError(result)) {
+      setQueryError(result.error);
+    } else {
+      // The backend /query endpoint returns only a final answer string.
+      // No citation or code excerpt is included in QueryResponse.
+      // See WEEK6_NOTES.md for details on why steps/streaming are absent.
+      setAnswer({ text: result.answer });
+    }
   }
 
   // Repo is connected — show the main question/trace UI.
@@ -115,7 +79,13 @@ export default function Home() {
             {/* "change" link — resets to ConnectRepo screen */}
             <button
               id="change-repo-btn"
-              onClick={() => setActiveRepo(null)}
+              onClick={() => {
+                // Also clear query state when switching repos.
+                setActiveRepo(null);
+                setAnswer(undefined);
+                setQueryError(null);
+                setThinking(false);
+              }}
               aria-label="Connect a different repository"
               style={{
                 fontFamily: "var(--font-inter, sans-serif)",
@@ -166,7 +136,7 @@ export default function Home() {
           aria-label="Query input"
           className="sm:w-[35%] overflow-y-auto border-b sm:border-b-0 sm:border-r border-[var(--wire)] flex-shrink-0"
         >
-          <QuestionPanel onSubmit={(q) => setQuery(q)} />
+          <QuestionPanel onSubmit={handleQuestion} disabled={thinking} />
         </section>
 
         {/* Right column — Trace panel (65%) */}
@@ -175,7 +145,12 @@ export default function Home() {
           aria-label="Trace output"
           className="flex-1 overflow-y-auto"
         >
-          <TracePanel steps={MOCK_STEPS} answer={MOCK_ANSWER} />
+          <TracePanel
+            steps={[]}
+            answer={answer}
+            thinking={thinking}
+            error={queryError}
+          />
         </section>
       </main>
     </div>

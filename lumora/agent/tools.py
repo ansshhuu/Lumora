@@ -1,5 +1,6 @@
 
 import os
+from contextvars import ContextVar
 from pathlib import Path
 
 from langchain_core.tools import tool
@@ -9,11 +10,29 @@ from lumora.embeddings.search import search_code as search_codebase
 from lumora.embeddings.qdrant_store import client as qdrant_client
 from lumora.ingestion.walker import walk_files
 
-MAX_CODE_CHARS = 2000  
+MAX_CODE_CHARS = 2000
 MAX_FILE_BYTES = 50 * 1024
-DEFAULT_COLLECTION = "requests_repo"
 
-REPO_ROOT = Path(os.getenv("LUMORA_REPO_ROOT", "test_repos/requests")).resolve()
+# Per-request context variables — set by ask() before each agent invocation so
+# the @tool functions (whose signatures are controlled by LangGraph) can reach
+# the correct collection and filesystem root without changing their LLM-visible
+# API.  Falls back to the old env-var / hardcoded values so unit tests that
+# don't call set_request_context continue to work.
+_collection_ctx: ContextVar[str] = ContextVar(
+    "_collection_ctx",
+    default=os.getenv("LUMORA_DEFAULT_COLLECTION", "requests_repo"),
+)
+_repo_root_ctx: ContextVar[Path] = ContextVar(
+    "_repo_root_ctx",
+    default=Path(os.getenv("LUMORA_REPO_ROOT", "test_repos/requests")).resolve(),
+)
+
+
+def set_request_context(collection: str, repo_root: Path) -> None:
+    """Called once per ask() invocation to bind the correct collection and repo
+    root into the current thread's context variables before the agent streams."""
+    _collection_ctx.set(collection)
+    _repo_root_ctx.set(repo_root)
 
 
 def _format_hit(hit: dict) -> str:
@@ -38,13 +57,14 @@ def _format_hit(hit: dict) -> str:
 @tool
 def search_code(query: str) -> str:
     """
-    Semantically searches the codebase. 
-    Use this tool when the query is conceptual, vague, or describes logic 
+    Semantically searches the codebase.
+    Use this tool when the query is conceptual, vague, or describes logic
     (e.g., 'where is the authentication handled?', 'how does retry logic work?').
     It returns code snippets that match the meaning of the query.
     """
+    collection = _collection_ctx.get()
     try:
-        results = search_codebase(query)
+        results = search_codebase(query, collection_name=collection)
     except Exception as e:
         return f"Error: code search failed ({e})."
 
@@ -61,12 +81,13 @@ def fetch_file(file_path: str) -> str:
     Use this tool ONLY when you know the exact file path (e.g., 'src/main.py').
     Helpful when you need full context beyond just a small code snippet.
     """
+    repo_root = _repo_root_ctx.get()
     try:
-        candidate = (REPO_ROOT / file_path).resolve()
+        candidate = (repo_root / file_path).resolve()
     except Exception as e:
         return f"Error: invalid path ({e})."
 
-    if REPO_ROOT != candidate and REPO_ROOT not in candidate.parents:
+    if repo_root != candidate and repo_root not in candidate.parents:
         return f"Error: '{file_path}' is outside the repository root."
 
     if not candidate.exists() or not candidate.is_file():
@@ -93,14 +114,15 @@ def fetch_file(file_path: str) -> str:
 def get_repo_structure(max_depth: int = 3) -> str:
     """
     Returns the directory tree and file structure of the repository.
-    Use this tool early in your reasoning when you need a high-level map 
+    Use this tool early in your reasoning when you need a high-level map
     of the project to understand where relevant files might be located.
     """
-    if not REPO_ROOT.exists() or not REPO_ROOT.is_dir():
-        return f"Error: repository root not found at {REPO_ROOT}."
+    repo_root = _repo_root_ctx.get()
+    if not repo_root.exists() or not repo_root.is_dir():
+        return f"Error: repository root not found at {repo_root}."
 
     try:
-        paths = sorted(walk_files(str(REPO_ROOT)))
+        paths = sorted(walk_files(str(repo_root)))
     except Exception as e:
         return f"Error: failed to walk repository ({e})."
 
@@ -109,7 +131,7 @@ def get_repo_structure(max_depth: int = 3) -> str:
     entries = []
 
     for path in paths:
-        rel = path.relative_to(REPO_ROOT)
+        rel = path.relative_to(repo_root)
         if len(rel.parts) - 1 > max_depth:
             continue
         entries.append(rel)
@@ -135,13 +157,14 @@ def get_repo_structure(max_depth: int = 3) -> str:
 def find_function(name: str) -> str:
     """
     Looks up a specific function, class, or method by its name.
-    Use this tool when you ALREADY know the exact or partial name of the function 
+    Use this tool when you ALREADY know the exact or partial name of the function
     (e.g., 'retry_request') and need to find which file and lines it is located in.
     Faster and more accurate than semantic search for exact names.
     """
+    collection = _collection_ctx.get()
     try:
         exact, _ = qdrant_client.scroll(
-            collection_name=DEFAULT_COLLECTION,
+            collection_name=collection,
             scroll_filter=Filter(
                 must=[FieldCondition(key="short_name", match=MatchValue(value=name))]
             ),
@@ -154,9 +177,8 @@ def find_function(name: str) -> str:
     matches = exact
     if not matches:
         try:
-            
             scanned, _ = qdrant_client.scroll(
-                collection_name=DEFAULT_COLLECTION,
+                collection_name=collection,
                 scroll_filter=Filter(
                     should=[
                         FieldCondition(key="short_name", match=MatchText(text=name)),
@@ -185,4 +207,3 @@ def find_function(name: str) -> str:
         lines.append(f"{kind} `{full_name}` — {location}")
 
     return "\n".join(lines)
-

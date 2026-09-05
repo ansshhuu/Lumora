@@ -6,6 +6,10 @@ import TraceStepComponent from "./TraceStep";
 interface TracePanelProps {
   steps: TraceStepType[];
   answer?: TraceAnswer;
+  /** True while a query is in flight — show the thinking indicator. */
+  thinking?: boolean;
+  /** Error message from a failed query — shown in --error color. */
+  error?: string | null;
 }
 
 /** Very lightweight manual syntax tinting — no external lib needed yet */
@@ -95,7 +99,7 @@ function CodeExcerpt({
   );
 }
 
-export default function TracePanel({ steps, answer }: TracePanelProps) {
+export default function TracePanel({ steps, answer, thinking, error }: TracePanelProps) {
   return (
     <div className="flex flex-col h-full px-6 py-6">
       {/* "trace" label + rule */}
@@ -111,22 +115,62 @@ export default function TracePanel({ steps, answer }: TracePanelProps) {
 
       {/* Timeline */}
       <div className="relative flex-1 overflow-y-auto">
-        {/* Vertical line */}
-        <div
-          className="absolute top-0 bottom-0 border-l border-[var(--wire)]"
-          style={{ left: "9px" }}
-          aria-hidden="true"
-        />
+        {/* Vertical line — only show when steps are visible */}
+        {!thinking && !error && steps.length > 0 && (
+          <div
+            className="absolute top-0 bottom-0 border-l border-[var(--wire)]"
+            style={{ left: "9px" }}
+            aria-hidden="true"
+          />
+        )}
 
-        {/* Steps */}
-        <div className="flex flex-col">
-          {steps.map((step) => (
-            <TraceStepComponent key={step.id} step={step} />
-          ))}
-        </div>
+        {/* ── Thinking state ── */}
+        {thinking && (
+          <div
+            className="flex items-center gap-3 mt-2"
+            aria-live="polite"
+            aria-label="Thinking…"
+          >
+            <span
+              className="trace-dot-active block rounded-full bg-[var(--pending)] shrink-0"
+              style={{ width: "8px", height: "8px" }}
+              aria-hidden="true"
+            />
+            <span
+              className="text-[var(--ghost)] text-xs"
+              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+            >
+              thinking...
+            </span>
+          </div>
+        )}
 
-        {/* Answer block */}
-        {answer && (
+        {/* ── Error state ── */}
+        {!thinking && error && (
+          <div className="mt-2 ml-0" role="alert">
+            <p
+              className="text-xs leading-relaxed"
+              style={{
+                fontFamily: "var(--font-inter, sans-serif)",
+                color: "var(--error)",
+              }}
+            >
+              {error}
+            </p>
+          </div>
+        )}
+
+        {/* ── Steps (real trace — currently empty until streaming is implemented) ── */}
+        {!thinking && !error && steps.length > 0 && (
+          <div className="flex flex-col">
+            {steps.map((step) => (
+              <TraceStepComponent key={step.id} step={step} />
+            ))}
+          </div>
+        )}
+
+        {/* ── Answer block ── */}
+        {!thinking && !error && answer && (
           <div className="mt-4 ml-8">
             <div className="border-t border-[var(--wire)] mb-3" />
             <p
@@ -170,6 +214,18 @@ export default function TracePanel({ steps, answer }: TracePanelProps) {
                 startLine={answer.codeExcerpt.startLine}
               />
             )}
+          </div>
+        )}
+
+        {/* ── Empty state — no query yet ── */}
+        {!thinking && !error && !answer && steps.length === 0 && (
+          <div className="flex items-center mt-4">
+            <p
+              className="text-[var(--ghost)] text-xs"
+              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+            >
+              ask a question to see the answer here
+            </p>
           </div>
         )}
       </div>

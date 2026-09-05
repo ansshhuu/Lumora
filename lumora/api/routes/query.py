@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -13,6 +14,10 @@ from lumora.embeddings.qdrant_store import client as qdrant_client
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Cloned repos are stored at this base path inside the container.
+# Must match CLONE_BASE_DIR in lumora/api/routes/index.py.
+_CLONE_BASE = Path("/app/cloned_repos")
 
 
 @router.post("/query", response_model=QueryResponse, dependencies=[Depends(require_api_key)])
@@ -31,9 +36,17 @@ async def query_repo(request: Request, body: QueryRequest) -> QueryResponse:
             status_code=404, detail=f"Collection '{body.collection}' not found"
         )
 
+    # Derive the filesystem path of the cloned repo from the collection name.
+    # index.py stores clones at CLONE_BASE_DIR / collection, which maps to
+    # /app/cloned_repos/<collection> inside the container.
+    repo_root = str(_CLONE_BASE / body.collection)
+
     try:
         answer = await asyncio.wait_for(
-            asyncio.to_thread(ask, body.question), timeout=QUERY_TIMEOUT_SECONDS
+            asyncio.to_thread(
+                ask, body.question, body.collection, repo_root
+            ),
+            timeout=QUERY_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Agent query timed out")

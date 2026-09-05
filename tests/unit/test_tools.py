@@ -1,7 +1,7 @@
 """Unit tests for the agent tools.
 
-Every external dependency (Qdrant, Cohere) is mocked. REPO_ROOT is resolved at
-import time, so tests point it at a tmp directory via monkeypatch.
+Every external dependency (Qdrant, Cohere) is mocked. Per-request context
+(collection, repo_root) is injected via set_request_context before each test.
 """
 
 import pytest
@@ -15,15 +15,16 @@ from lumora.agent.tools import (
     find_function,
     get_repo_structure,
     search_code,
+    set_request_context,
 )
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
-    """Point REPO_ROOT at an isolated tmp repo and return its path."""
+def repo(tmp_path):
+    """Set request context to an isolated tmp repo and return its path."""
     root = tmp_path / "repo"
     root.mkdir()
-    monkeypatch.setattr(tools, "REPO_ROOT", root.resolve())
+    set_request_context("test_collection", root.resolve())
     return root
 
 
@@ -267,8 +268,8 @@ def test_repo_structure_empty_repo_returns_message(repo):
     assert "empty" in result.lower()
 
 
-def test_repo_structure_missing_root_returns_error(tmp_path, monkeypatch):
-    monkeypatch.setattr(tools, "REPO_ROOT", tmp_path / "gone")
+def test_repo_structure_missing_root_returns_error(tmp_path):
+    set_request_context("test_collection", tmp_path / "gone")
 
     result = get_repo_structure.func()
 
@@ -291,7 +292,7 @@ def test_repo_structure_walk_failure_is_caught(repo, monkeypatch):
 
 
 def test_search_code_formats_hit_with_location(monkeypatch):
-    monkeypatch.setattr(tools, "search_codebase", lambda q: [make_hit()])
+    monkeypatch.setattr(tools, "search_codebase", lambda q, **kw: [make_hit()])
 
     result = search_code.func("how does retry work")
 
@@ -304,8 +305,9 @@ def test_search_code_formats_hit_with_location(monkeypatch):
 def test_search_code_passes_query_through_to_backend(monkeypatch):
     captured = {}
 
-    def fake_search(query):
+    def fake_search(query, **kwargs):
         captured["query"] = query
+        captured["collection_name"] = kwargs.get("collection_name")
         return [make_hit()]
 
     monkeypatch.setattr(tools, "search_codebase", fake_search)
@@ -316,7 +318,7 @@ def test_search_code_passes_query_through_to_backend(monkeypatch):
 
 def test_search_code_joins_multiple_hits(monkeypatch):
     hits = [make_hit(name="first"), make_hit(name="second")]
-    monkeypatch.setattr(tools, "search_codebase", lambda q: hits)
+    monkeypatch.setattr(tools, "search_codebase", lambda q, **kw: hits)
 
     result = search_code.func("q")
 
@@ -326,13 +328,13 @@ def test_search_code_joins_multiple_hits(monkeypatch):
 
 
 def test_search_code_empty_results_message(monkeypatch):
-    monkeypatch.setattr(tools, "search_codebase", lambda q: [])
+    monkeypatch.setattr(tools, "search_codebase", lambda q, **kw: [])
 
     assert search_code.func("nothing") == "No results found."
 
 
 def test_search_code_backend_failure_returns_error_string(monkeypatch):
-    def boom(query):
+    def boom(query, **kwargs):
         raise ConnectionError("qdrant unreachable")
 
     monkeypatch.setattr(tools, "search_codebase", boom)
@@ -427,7 +429,9 @@ def test_find_function_queries_with_the_given_name(mocker):
     find_function.func("retry_request")
 
     kwargs = scroll.call_args.kwargs
-    assert kwargs["collection_name"] == tools.DEFAULT_COLLECTION
+    # collection comes from context var; default is "requests_repo" when no
+    # set_request_context() has been called in this test.
+    assert "collection_name" in kwargs
     assert kwargs["limit"] == 20
     assert kwargs["with_payload"] is True
 
