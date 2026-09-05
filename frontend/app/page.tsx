@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import QuestionPanel from "./components/QuestionPanel";
 import TracePanel from "./components/TracePanel";
+import ConnectRepo, { ActiveRepo } from "./components/ConnectRepo";
 import { TraceStep, TraceAnswer } from "@/lib/types";
 
 /* ─── Hardcoded mock data ──────────────────────────────────────────────── */
@@ -74,9 +74,14 @@ const MOCK_ANSWER: TraceAnswer = {
 /* ─── Page ─────────────────────────────────────────────────────────────── */
 export default function Home() {
   const [_query, setQuery] = useState("");
-  // In production this would drive an API call;
-  // for now the mock data is always shown.
+  const [activeRepo, setActiveRepo] = useState<ActiveRepo | null>(null);
 
+  // No repo connected yet — show the connect screen.
+  if (!activeRepo) {
+    return <ConnectRepo onConnected={setActiveRepo} />;
+  }
+
+  // Repo is connected — show the main question/trace UI.
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* ── Top bar ────────────────────────────────────────────────── */}
@@ -85,7 +90,7 @@ export default function Home() {
         className="flex items-center justify-between px-5 flex-shrink-0 border-b border-[var(--wire)]"
         style={{ height: "56px" }}
       >
-        {/* Left: wordmark + repo selector */}
+        {/* Left: wordmark + repo label + change link */}
         <div className="flex items-center gap-5">
           <span
             className="text-[var(--paper)] font-bold text-sm tracking-tight select-none"
@@ -101,15 +106,36 @@ export default function Home() {
             >
               repo:
             </span>
-            <button
-              id="repo-selector"
-              className="flex items-center gap-1 text-[var(--paper)] text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--signal)] focus-visible:rounded-sm"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              aria-label="Select repository"
-              aria-haspopup="listbox"
+            <span
+              className="text-[var(--paper)] text-xs"
+              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
             >
-              lumora/backend
-              <ChevronDown size={11} strokeWidth={1.5} className="text-[var(--ghost)] mt-px" />
+              {activeRepo.label}
+            </span>
+            {/* "change" link — resets to ConnectRepo screen */}
+            <button
+              id="change-repo-btn"
+              onClick={() => setActiveRepo(null)}
+              aria-label="Connect a different repository"
+              style={{
+                fontFamily: "var(--font-inter, sans-serif)",
+                fontSize: "0.6875rem",
+                color: "var(--ghost)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "0 0.125rem",
+                textDecoration: "none",
+                lineHeight: 1,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.textDecoration = "underline";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.textDecoration = "none";
+              }}
+            >
+              change
             </button>
           </div>
         </div>
