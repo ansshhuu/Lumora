@@ -29,10 +29,21 @@ HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 
 
 def _server_reachable() -> bool:
+    """Probe the live server once, at import time, to decide whether to skip.
+
+    Catches every exception rather than just httpx.TransportError: this runs
+    during collection, so anything escaping here aborts the whole test session
+    instead of skipping. CI has no server (and may block outbound sockets
+    outright), and an unreachable server is a skip, never an error.
+
+    Set LUMORA_SKIP_LIVE_TESTS=1 to skip the probe entirely.
+    """
+    if os.getenv("LUMORA_SKIP_LIVE_TESTS"):
+        return False
     try:
         httpx.get(f"{BASE_URL}/health", timeout=2)
         return True
-    except httpx.TransportError:
+    except Exception:
         return False
 
 
@@ -155,6 +166,12 @@ def test_rate_limit_exceeded_returns_429():
 # --- in-process, mocked: exercised directly rather than against a live server ---
 
 
+# Pinned rather than read from the environment: with no API_KEY configured the
+# auth dependency fails closed with 500, so the test would never reach the size
+# check it is actually about.
+SIZE_GUARD_KEY = "size-guard-test-key"
+
+
 def test_index_oversized_repo_returns_400_and_cleans_up(tmp_path):
     """Mock MAX_REPO_SIZE_MB down to ~0 so a tiny cloned dir already 'exceeds' the cap."""
     from lumora.api.main import app
@@ -169,11 +186,12 @@ def test_index_oversized_repo_returns_400_and_cleans_up(tmp_path):
 
     with patch("lumora.api.routes.index.CLONE_BASE_DIR", tmp_path / "cloned_repos"), \
          patch("lumora.api.routes.index.clone_repo", side_effect=fake_clone_repo), \
-         patch("lumora.api.routes.index.MAX_REPO_SIZE_MB", 0):
+         patch("lumora.api.routes.index.MAX_REPO_SIZE_MB", 0), \
+         patch("lumora.api.security.API_KEY", SIZE_GUARD_KEY):
         client = TestClient(app)
         r = client.post(
             "/index",
-            headers=HEADERS,
+            headers={"X-API-Key": SIZE_GUARD_KEY},
             json={"repo_url": "https://github.com/octocat/hello-world"},
         )
         _assert_clean_error(r, 400)

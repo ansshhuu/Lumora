@@ -2,7 +2,10 @@ import uuid
 import time
 from typing import List, Dict, Any
 from qdrant_client.models import PointStruct
-import cohere
+# Import the error class directly: cohere 7.x resolves submodules lazily, so
+# `cohere.errors...` in an except clause raises AttributeError instead of
+# matching, masking the real failure.
+from cohere.errors.too_many_requests_error import TooManyRequestsError
 
 from lumora.embeddings.embedder import embed_batch
 from lumora.embeddings.qdrant_store import client
@@ -48,7 +51,7 @@ def embed_and_store(
             try:
                 vectors = embed_batch(texts, input_type="document")
                 break  
-            except cohere.errors.too_many_requests_error.TooManyRequestsError as e:
+            except TooManyRequestsError as e:
                 if attempt < retries - 1:
                     print(f" Rate limit hit (100k TPM). Pausing for {backoff_delay}s before retry (Attempt {attempt + 1}/{retries})...")
                     time.sleep(backoff_delay)

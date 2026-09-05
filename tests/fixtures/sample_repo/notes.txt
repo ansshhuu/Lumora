@@ -1,0 +1,1 @@
+A non-Python file. The walker yields it, but the ingestion flow only parses .py.

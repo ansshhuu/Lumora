@@ -7,7 +7,7 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchText
 
 from lumora.embeddings.search import search_code as search_codebase
 from lumora.embeddings.qdrant_store import client as qdrant_client
-from lumora.ingestion.walker import DEFAULT_SKIP_DIRS, walk_files
+from lumora.ingestion.walker import walk_files
 
 MAX_CODE_CHARS = 2000  
 MAX_FILE_BYTES = 50 * 1024

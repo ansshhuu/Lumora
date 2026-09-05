@@ -16,8 +16,19 @@ PREVIEW_CHARS = 300
 
 TOOLS = [search_code, fetch_file, get_repo_structure, find_function]
 
-llm = ChatGroq(model=MODEL_NAME)
-agent = create_react_agent(llm, TOOLS, prompt=SYSTEM_PROMPT)
+# Built lazily so importing this module never requires a key. ChatGroq raises
+# at construction when GROQ_API_KEY is unset, which previously made the whole
+# API package unimportable in CI and unit tests. Mirrors embedder.get_client().
+_agent = None
+
+
+def get_agent():
+    """Returns the process-wide ReAct agent, constructing it on first use."""
+    global _agent
+    if _agent is None:
+        llm = ChatGroq(model=MODEL_NAME)
+        _agent = create_react_agent(llm, TOOLS, prompt=SYSTEM_PROMPT)
+    return _agent
 
 
 def _preview(text: str) -> str:
@@ -61,7 +72,7 @@ def ask(question: str) -> str:
     """
     final_message = None
     try:
-        for update in agent.stream(
+        for update in get_agent().stream(
             {"messages": [{"role": "user", "content": question}]},
             config={"recursion_limit": RECURSION_LIMIT},
             stream_mode="updates",

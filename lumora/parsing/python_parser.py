@@ -12,11 +12,19 @@ def extract_docstring(node:Any,source_bytes:bytes)-> Optional[str]:
         return None
     first_child=body_node.children[0]
 
-    if first_child.type =="expression_statement":
-        string_node=first_child.children[0]
-        if string_node.type == "string":
-            doc = source_bytes[string_node.start_byte : string_node.end_byte].decode("utf-8", errors="ignore")
-            return doc.strip(" '\"")
+    # Depending on grammar version the docstring is either a bare `string` node
+    # in the block or wrapped in an `expression_statement`.
+    string_node=None
+    if first_child.type == "string":
+        string_node=first_child
+    elif first_child.type == "expression_statement" and first_child.children:
+        candidate=first_child.children[0]
+        if candidate.type == "string":
+            string_node=candidate
+
+    if string_node is not None:
+        doc = source_bytes[string_node.start_byte : string_node.end_byte].decode("utf-8", errors="ignore")
+        return doc.strip(" '\"")
     return None
 
 def extract_functions_and_classes(file_path: str, repo_root: str = "") -> List[Dict[str, Any]]:

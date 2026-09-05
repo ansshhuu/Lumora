@@ -4,3 +4,6 @@ __pycache__/
 .env
 test_repos/
 repos/
+.coverage
+htmlcov/
+venv/
