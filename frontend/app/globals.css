@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* ─── Lumora design tokens ─────────────────────────────────────────────── */
+:root {
+  --ink:     #0D1117;
+  --paper:   #E8E6DD;
+  --signal:  #5FB89C;
+  --pending: #C9A15E;
+  --wire:    #242B36;
+  --ghost:   #6B7280;
+}
+
+/* Tailwind v4 CSS-first theme extension */
+@theme inline {
+  --color-ink:     var(--ink);
+  --color-paper:   var(--paper);
+  --color-signal:  var(--signal);
+  --color-pending: var(--pending);
+  --color-wire:    var(--wire);
+  --color-ghost:   var(--ghost);
+
+  --font-sans:  var(--font-inter);
+  --font-mono:  var(--font-ibm-plex-mono);
+}
+
+/* ─── Base reset ───────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar styling ────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--wire); border-radius: 2px; }
+
+/* ─── Focus styles ─────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ─── Signal dot pulse (top bar live indicator) ────────────────────────── */
+@keyframes signal-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.7); }
+}
+
+.signal-pulse {
+  animation: signal-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-pulse { animation: none; }
+}
+
+/* ─── Active trace dot glow ────────────────────────────────────────────── */
+@keyframes trace-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pending) 40%, transparent); }
+  50%       { box-shadow: 0 0 6px 3px color-mix(in srgb, var(--pending) 30%, transparent); }
+}
+
+.trace-dot-active {
+  animation: trace-glow 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-dot-active { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pending) 30%, transparent); }
+}
+
+/* ─── Suggested question hover ─────────────────────────────────────────── */
+.suggested-question {
+  transition: background 0.15s ease;
+}
+.suggested-question:hover {
+  background: color-mix(in srgb, var(--wire) 60%, transparent);
+}
+
+/* ─── Repo selector chevron area ──────────────────────────────────────── */
+.repo-selector {
+  appearance: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--paper);
+  font-family: var(--font-ibm-plex-mono), monospace;
+  font-size: 0.8125rem;
+}
+.repo-selector:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
