@@ -1,9 +1,11 @@
 /**
  * lib/api.ts — Lumora backend API client.
  * Single-user, single-instance; no auth layer, just an API key via env var.
+ *
+ * All fetches go through the Next.js /api/* proxy (see next.config.ts),
+ * so the browser never makes a cross-origin request — no CORS headers required.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
 export interface IndexSuccess {
@@ -31,17 +33,17 @@ export async function indexRepo(
   apiKey: string = API_KEY
 ): Promise<IndexResult> {
   try {
-    const res = await fetch(`${API_URL}/index`, {
+    const res = await fetch("/api/index", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": apiKey,
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
       },
       body: JSON.stringify({ repo_url: repoUrl }),
     });
 
     if (!res.ok) {
-      // Try to get the real error message from the response body.
+      // Extract the real error message from the response body.
       let message = `HTTP ${res.status}`;
       try {
         const body = await res.json();
@@ -62,9 +64,10 @@ export async function indexRepo(
       itemsCount: data.items_count ?? data.itemsCount ?? 0,
     };
   } catch (err: unknown) {
-    // Network-level failure — not a generic catch-all, surface the real cause.
+    // Network-level failure — surface the real cause, not a generic message.
     const message =
       err instanceof Error ? err.message : "network error — could not reach backend";
     return { error: message };
   }
 }
+
