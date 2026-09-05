@@ -6,12 +6,13 @@
 
 **Lumora** is a developer tool that lets you explore and understand GitHub repositories using plain English questions. Instead of manually reading through files, you describe what you want to know and Lumora finds the answer directly from the code.
 
+[![CI](https://github.com/ansshhuu/Lumora/actions/workflows/ci.yml/badge.svg)](https://github.com/ansshhuu/Lumora/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-274%20passing-brightgreen?style=flat-square)
 ![Status](https://img.shields.io/badge/status-in%20development-yellow?style=flat-square)
-![Python](https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?style=flat-square&logo=fastapi)
-![Docker](https://img.shields.io/badge/Docker-ready-blue?style=flat-square&logo=docker)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue?style=flat-square&logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green?style=flat-square&logo=fastapi)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![CI](https://img.shields.io/badge/CI-GitHub%20Actions-black?style=flat-square&logo=githubactions)
 
 </div>
 
@@ -50,13 +51,13 @@ Lumora processes your question through three stages:
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   Web API  (src/api/)                    │
+│                   Web API  (lumora/api/)                 │
 │         Receives your question and routes it             │
 └─────────────────────┬───────────────────────────────────┘
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│              AI Reasoning Agent  (src/agent/)            │
+│              AI Reasoning Agent  (lumora/agent/)         │
 │                                                          │
 │   The agent thinks through your question step by step,  │
 │   uses tools to search the codebase, reviews what it    │
@@ -72,7 +73,7 @@ Lumora processes your question through three stages:
            ▼                          ▼
 ┌─────────────────────┐   ┌──────────────────────────────┐
 │   Code Search       │   │  Indexing Pipeline            │
-│   (src/retrieval/)  │   │  (src/ingestion/)             │
+│  (lumora/embeddings)│   │  (lumora/ingestion/)          │
 │                     │   │                               │
 │  Searches by        │   │  Downloads repo → Reads code  │
 │  meaning, keywords, │   │  structure → Converts to      │
@@ -114,37 +115,36 @@ Lumora processes your question through three stages:
 lumora/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml              # Runs code checks and tests on every push
-│       ├── docker.yml          # Verifies that Docker builds succeed
-│       └── release.yml         # Handles automatic version releases
+│       ├── ci.yml              # Lint and tests on every push and pull request
+│       ├── docker.yml          # Placeholder — not yet implemented
+│       └── release.yml         # Placeholder — not yet implemented
 │
-├── src/
-│   └── lumora/
-│       ├── api/                # Web API — handles requests and responses
-│       ├── agent/              # AI agent — reasoning and tool use logic
-│       ├── ingestion/          # Indexing pipeline — downloads and processes repositories
-│       ├── retrieval/          # Search logic — finds relevant code for a query
-│       └── core/               # Shared configuration, models, and utilities
+├── lumora/
+│   ├── api/                    # FastAPI app — routes, auth, rate limiting
+│   │   └── routes/             # /health, /index, /query
+│   ├── agent/                  # LangGraph ReAct agent, tools and prompts
+│   ├── ingestion/              # Repo cloning and file walking
+│   ├── parsing/                # tree-sitter Python parser
+│   ├── embeddings/             # Cohere embedding, Qdrant store and search
+│   └── core/                   # Shared configuration
 │
 ├── tests/
-│   ├── unit/
-│   │   ├── test_chunker.py     # Tests for how code is split into searchable pieces
-│   │   ├── test_retrieval.py   # Tests for the search system
-│   │   └── test_agent.py       # Tests for the AI agent tools
-│   └── integration/
-│       └── test_index_flow.py  # End-to-end test for the full indexing process
+│   ├── unit/                   # Parser, walker, clone, embedder, tools,
+│   │                           #   pipeline, search, Qdrant store, agent graph
+│   ├── integration/
+│   │   ├── test_ingestion_flow.py   # Walk + parse the fixture repo end to end
+│   │   └── test_api_endpoints.py    # API routing, validation and auth
+│   └── fixtures/
+│       └── sample_repo/        # Small committed repo used by integration tests
 │
 ├── docker/
 │   ├── Dockerfile.api          # Container for the web API
 │   ├── Dockerfile.worker       # Container for background indexing jobs
 │   └── Dockerfile.sandbox      # Isolated container for safe code processing
 │
-├── migrations/                 # Database schema change history
-├── docs/                       # Additional documentation
-├── docker-compose.yml          # Runs all services together for production
+├── docker-compose.yml          # Runs all services together
 ├── docker-compose.dev.yml      # Development configuration with auto-reload
-├── pyproject.toml              # Project dependencies and tool configuration
-├── Makefile                    # Shortcuts for common development commands
+├── pyproject.toml              # Dependencies and tool configuration
 ├── .env.example                # Template for required environment variables
 ├── CONTRIBUTING.md             # Guide for contributors
 └── LICENSE                     # MIT License
@@ -154,18 +154,20 @@ lumora/
 
 ## 🗺️ Roadmap
 
-> **Current Phase: Foundation** — Project setup and core infrastructure
+> **Current Phase: Production Ready** — testing and CI/CD complete; database, observability and a web UI still ahead.
+>
+> **Overall progress: ~80% complete.**
 
-### Phase 1 — Foundation *(Current)*
+### Phase 1 — Foundation
 - [x] Project structure and dependency management with Poetry
 - [x] Docker containers for API, background worker, and sandbox
-- [x] Automated checks via GitHub Actions — code quality, tests, and releases
+- [x] Automated checks via GitHub Actions — lint and tests *(release and Docker-build workflows are still empty placeholders)*
 - [x] Test structure for unit and integration tests
 - [x] Contribution guide and MIT License
 - [x] Basic API with a working health check endpoint
-- [ ] Connect to Qdrant and run a simple code search
-- [ ] Read and understand Python file structure using tree-sitter
-- [ ] Index a repository end-to-end for the first time
+- [x] Connect to Qdrant and run a simple code search
+- [x] Read and understand Python file structure using tree-sitter
+- [x] Index a repository end-to-end for the first time
 
 ### Phase 2 — AI Agent
 - [x] Set up the reasoning agent using LangGraph
@@ -182,7 +184,9 @@ lumora/
 - [ ] Add caching to speed up repeated queries
 - [ ] Process repository indexing in the background without delays
 
-### Phase 4 — Production Ready
+### Phase 4 — Production Ready *(Current)*
+- [x] Test suite — 274 tests across unit and integration, 92% coverage
+- [x] CI/CD pipeline — lint and tests run automatically on every push and PR
 - [ ] Full database integration with migration support
 - [ ] Monitoring and observability with LangSmith
 - [ ] Simple web interface for non-technical users
@@ -197,7 +201,7 @@ lumora/
 
 ### Requirements
 
-- Python 3.12 or higher
+- Python 3.11 or higher
 - Docker and Docker Compose
 - Poetry
 
@@ -205,8 +209,8 @@ lumora/
 
 ```bash
 # Download the project
-git clone https://github.com/yourusername/lumora.git
-cd lumora
+git clone https://github.com/ansshhuu/Lumora.git
+cd Lumora
 
 # Set up your environment variables
 cp .env.example .env
@@ -228,22 +232,47 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 ### Running Tests
 
 ```bash
-# Using the shortcut
-make test
-
-# Or directly
 poetry run pytest tests/
+
+# With a coverage report
+poetry run pytest tests/ --cov=lumora --cov-report=term-missing
+
+# Lint
+poetry run ruff check .
 ```
 
-### Available Commands
+The suite needs no running services. Cohere, Groq and Qdrant are all mocked, so
+it runs offline with no API keys and no Qdrant instance — which is exactly how
+CI runs it.
 
-```bash
-make lint       # Check code quality
-make test       # Run all tests
-make build      # Build Docker images
-make up         # Start all services
-make down       # Stop all services
-```
+---
+
+## 🧪 Testing
+
+274 tests, **92% line coverage** (537 statements, 43 uncovered) as reported by
+`pytest-cov`.
+
+| Suite | Tests | What it covers |
+|---|---|---|
+| `tests/unit/` | 217 | Parser, walker, clone, embedder, agent tools, pipeline, search, Qdrant store |
+| `tests/integration/` | 55 | Full walk-and-parse over a committed fixture repo; API routing, validation and auth via `TestClient` |
+| `tests/test_week4_manual.py` | 2 (+8 skipped) | Security and robustness checks; the 8 live tests skip unless a server is running at `LUMORA_TEST_BASE_URL` |
+
+Coverage by area:
+
+| Module | Coverage |
+|---|---|
+| `api/` (routes, security, models, limiter) | 89% |
+| `embeddings/` (embedder, pipeline, search, store) | 99% |
+| `parsing/` + `ingestion/` | 89% |
+| `agent/` (tools, graph) | 94% |
+
+The uncovered lines are almost entirely the real network calls the suite
+deliberately mocks — `git clone`, Cohere embedding requests and Qdrant upserts.
+
+Integration tests run against `tests/fixtures/sample_repo/`, a small package
+committed to the repository rather than cloned at test time, so the expected
+function and class counts are fixed and the tests need no network.
 
 ---
 
@@ -252,13 +281,16 @@ make down       # Stop all services
 Full interactive reference (request/response schemas, try-it-out) is auto-generated at
 `http://localhost:8000/docs` once the server is running. Summary:
 
-Every endpoint below requires an `X-API-Key` header matching the `API_KEY` (or `SECRET_KEY`)
-env var — missing or wrong key returns `401`. `/index` and `/query` are additionally rate
-limited per-IP to `RATE_LIMIT_PER_MINUTE` (default 20/minute) — exceeding it returns `429`.
+`/index` and `/query` require an `X-API-Key` header matching the `API_KEY` (or
+`SECRET_KEY`) env var — a missing or wrong key returns `401`. Both are also rate limited
+per-IP to `RATE_LIMIT_PER_MINUTE` (default 20/minute); exceeding it returns `429`.
+
+`/health` is deliberately unauthenticated so load balancers and uptime monitors can probe
+it. It reports only Qdrant reachability and exposes no repository data.
 
 | Method & Path | Description | Notable responses |
 |---|---|---|
-| `GET /health` | Checks connectivity to Qdrant. | `200` ok · `503` Qdrant unreachable |
+| `GET /health` | Checks connectivity to Qdrant. No API key required. | `200` ok · `503` Qdrant unreachable |
 | `POST /index` | Clones a public GitHub repo, parses it, and embeds it into a Qdrant collection. Body: `{"repo_url": "https://github.com/<owner>/<repo>"}`. | `400` invalid URL or repo exceeds `MAX_REPO_SIZE_MB` · `500` indexing failed |
 | `POST /query` | Asks the reasoning agent a question against an indexed collection. Body: `{"question": "...", "collection": "<name>"}`. | `404` collection not found · `504` agent exceeded `QUERY_TIMEOUT_SECONDS` · `500` agent failed |
 
