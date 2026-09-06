@@ -16,9 +16,5 @@ class QueryRequest(BaseModel):
     collection: str = Field(..., min_length=1)
 
 
-class QueryResponse(BaseModel):
-    answer: str
-
-
 class HealthResponse(BaseModel):
     status: str

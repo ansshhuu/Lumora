@@ -4,7 +4,7 @@ import { useState } from "react";
 import QuestionPanel from "./components/QuestionPanel";
 import TracePanel from "./components/TracePanel";
 import ConnectRepo, { ActiveRepo } from "./components/ConnectRepo";
-import { TraceAnswer } from "@/lib/types";
+import { TraceAnswer, TraceStep } from "@/lib/types";
 import { queryRepo, isQueryError } from "@/lib/api";
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
@@ -15,6 +15,7 @@ export default function Home() {
 
   // Query state — no mock data, all real.
   const [thinking, setThinking] = useState(false);
+  const [steps, setSteps] = useState<TraceStep[]>([]);
   const [answer, setAnswer] = useState<TraceAnswer | undefined>(undefined);
   const [queryError, setQueryError] = useState<string | null>(null);
 
@@ -27,22 +28,92 @@ export default function Home() {
     if (thinking) return; // prevent double-submit while in-flight
 
     // Clear stale state before starting a new request.
+    setSteps([]);
     setAnswer(undefined);
     setQueryError(null);
     setThinking(true);
 
-    const result = await queryRepo(question, activeRepo!.collection, API_KEY);
+    // Wall-clock start for each in-flight step, keyed by step id. Held in a
+    // local map rather than state so timing never triggers a re-render.
+    const startedAt = new Map<string, number>();
+    let seq = 0;
+
+    const result = await queryRepo(
+      question,
+      activeRepo!.collection,
+      (event) => {
+        if (event.type === "tool_call") {
+          const id = `step-${seq++}`;
+          startedAt.set(id, performance.now());
+          setSteps((prev) => [
+            ...prev,
+            {
+              id,
+              toolName: event.name,
+              description: event.input,
+              status: "active",
+            },
+          ]);
+          return;
+        }
+
+        if (event.type === "retry") {
+          // The backend abandoned that attempt and is starting over, so the
+          // steps already on screen belong to a run that no longer counts.
+          console.warn(
+            `[query] retrying (attempt ${event.attempt}): ${event.reason}`
+          );
+          startedAt.clear();
+          setSteps([]);
+          return;
+        }
+
+        if (event.type === "tool_result") {
+          // Close the most recent still-active step for this tool: the agent
+          // may call the same tool several times, and results arrive in order.
+          setSteps((prev) => {
+            const index = prev.findLastIndex(
+              (s) => s.toolName === event.name && s.status === "active"
+            );
+            if (index === -1) return prev;
+
+            const started = startedAt.get(prev[index].id);
+            const next = [...prev];
+            next[index] = {
+              ...next[index],
+              status: "done",
+              elapsedSeconds:
+                started === undefined
+                  ? undefined
+                  : (performance.now() - started) / 1000,
+            };
+            return next;
+          });
+          return;
+        }
+
+        if (event.type === "final_answer") {
+          // The agent can finish while a call is unresolved (e.g. it answered
+          // from a result it already had); don't strand a gold dot.
+          setSteps((prev) =>
+            prev.map((s) => (s.status === "active" ? { ...s, status: "done" } : s))
+          );
+          setAnswer({
+            text: event.text,
+            citation: event.citation ?? undefined,
+          });
+        }
+      },
+      API_KEY
+    );
 
     setThinking(false);
 
     if (isQueryError(result)) {
       setQueryError(result.error);
-    } else {
-      // The backend /query endpoint returns only a final answer string.
-      // No citation or code excerpt is included in QueryResponse.
-      // See WEEK6_NOTES.md for details on why steps/streaming are absent.
-      setAnswer({ text: result.answer });
     }
+    // On success the answer was already set by the final_answer event above,
+    // so there is nothing left to do here.
   }
 
   // Repo is connected — show the main question/trace UI.
@@ -82,6 +153,7 @@ export default function Home() {
               onClick={() => {
                 // Also clear query state when switching repos.
                 setActiveRepo(null);
+                setSteps([]);
                 setAnswer(undefined);
                 setQueryError(null);
                 setThinking(false);
@@ -146,7 +218,7 @@ export default function Home() {
           className="flex-1 overflow-y-auto"
         >
           <TracePanel
-            steps={[]}
+            steps={steps}
             answer={answer}
             thinking={thinking}
             error={queryError}

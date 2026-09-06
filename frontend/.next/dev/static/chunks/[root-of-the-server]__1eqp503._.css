@@ -219,6 +219,7 @@
     --text-base: 1rem;
     --text-base--line-height: calc(1.5 / 1);
     --font-weight-medium: 500;
+    --font-weight-semibold: 600;
     --font-weight-bold: 700;
     --tracking-tight: -.025em;
     --leading-tight: 1.25;
@@ -509,6 +510,10 @@
     bottom: calc(var(--spacing) * 3);
   }
 
+  .my-3 {
+    margin-block: calc(var(--spacing) * 3);
+  }
+
   .mt-0\.5 {
     margin-top: calc(var(--spacing) * .5);
   }
@@ -523,6 +528,10 @@
 
   .mt-4 {
     margin-top: calc(var(--spacing) * 4);
+  }
+
+  .mb-1 {
+    margin-bottom: var(--spacing);
   }
 
   .mb-2 {
@@ -551,6 +560,14 @@
 
   .hidden {
     display: none;
+  }
+
+  .inline {
+    display: inline;
+  }
+
+  .table {
+    display: table;
   }
 
   .h-full {
@@ -591,6 +608,14 @@
 
   .resize-none {
     resize: none;
+  }
+
+  .list-decimal {
+    list-style-type: decimal;
+  }
+
+  .list-disc {
+    list-style-type: disc;
   }
 
   .flex-col {
@@ -755,8 +780,16 @@
     padding-right: calc(var(--spacing) * 10);
   }
 
+  .pl-3 {
+    padding-left: calc(var(--spacing) * 3);
+  }
+
   .pl-4 {
     padding-left: calc(var(--spacing) * 4);
+  }
+
+  .pl-5 {
+    padding-left: calc(var(--spacing) * 5);
   }
 
   .text-left {
@@ -765,6 +798,10 @@
 
   .text-right {
     text-align: right;
+  }
+
+  .align-top {
+    vertical-align: top;
   }
 
   .text-base {
@@ -812,6 +849,11 @@
     font-weight: var(--font-weight-medium);
   }
 
+  .font-semibold {
+    --tw-font-weight: var(--font-weight-semibold);
+    font-weight: var(--font-weight-semibold);
+  }
+
   .tracking-tight {
     --tw-tracking: var(--tracking-tight);
     letter-spacing: var(--tracking-tight);
@@ -835,6 +877,10 @@
 
   .text-\[var\(--signal\)\] {
     color: var(--signal);
+  }
+
+  .italic {
+    font-style: italic;
   }
 
   .tabular-nums {
@@ -890,8 +936,28 @@
     user-select: none;
   }
 
+  .marker\:text-\[var\(--ghost\)\] ::marker {
+    color: var(--ghost);
+  }
+
+  .marker\:text-\[var\(--ghost\)\]::marker {
+    color: var(--ghost);
+  }
+
+  .marker\:text-\[var\(--ghost\)\] ::-webkit-details-marker {
+    color: var(--ghost);
+  }
+
+  .marker\:text-\[var\(--ghost\)\]::-webkit-details-marker {
+    color: var(--ghost);
+  }
+
   .placeholder\:text-\[var\(--ghost\)\]::placeholder {
     color: var(--ghost);
+  }
+
+  .last\:mb-0:last-child {
+    margin-bottom: 0;
   }
 
   @media (hover: hover) {

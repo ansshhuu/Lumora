@@ -8,10 +8,11 @@ Two deliberate seams:
 
 * ``lumora.api.security.API_KEY`` is read at call time from the module global,
   so patching it there pins a known key regardless of the developer's .env.
-* The route modules bind ``ask`` and ``qdrant_client`` into their own
+* The route modules bind ``ask_stream`` and ``qdrant_client`` into their own
   namespaces at import, so patches target the route module, not the origin.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -186,13 +187,13 @@ def test_query_with_a_wrong_api_key_returns_401(client):
 
 
 def test_auth_runs_before_the_agent_is_ever_invoked(client):
-    with patch("lumora.api.routes.query.ask") as ask:
+    with patch("lumora.api.routes.query.ask_stream") as ask_stream:
         response = client.post(
             "/query", json={"question": "hello", "collection": "demo"}
         )
 
     assert response.status_code == 401
-    ask.assert_not_called()
+    ask_stream.assert_not_called()
 
 
 def test_index_without_an_api_key_returns_401(client):
@@ -214,11 +215,37 @@ def test_unconfigured_server_key_returns_500_not_open_access(client):
     assert response.json()["detail"] == "API key not configured"
 
 
-# --- /query: mocked agent -------------------------------------------------------
+# --- /query: mocked agent (SSE stream) ------------------------------------------
 
 
-def test_query_with_mocked_agent_returns_200_and_correct_shape(client, healthy_qdrant):
-    with patch("lumora.api.routes.query.ask", return_value="Store keeps records.") as ask:
+def sse_events(response):
+    """Parse an SSE response body into the list of decoded event payloads."""
+    return [
+        json.loads(line[len("data:") :].strip())
+        for line in response.text.splitlines()
+        if line.startswith("data:")
+    ]
+
+
+def fake_stream(*events):
+    """Build an ask_stream stand-in yielding the given events."""
+    def _stream(*_args, **_kwargs):
+        yield from events
+    return _stream
+
+
+ANSWER_EVENT = {"type": "final_answer", "text": "Store keeps records.", "citation": None}
+
+
+def test_query_streams_sse_events_and_sets_the_event_stream_content_type(
+    client, healthy_qdrant
+):
+    events = (
+        {"type": "tool_call", "name": "search_code", "input": "Store"},
+        {"type": "tool_result", "name": "search_code", "preview": "class Store..."},
+        ANSWER_EVENT,
+    )
+    with patch("lumora.api.routes.query.ask_stream", fake_stream(*events)):
         response = client.post(
             "/query",
             headers=AUTH,
@@ -226,31 +253,45 @@ def test_query_with_mocked_agent_returns_200_and_correct_shape(client, healthy_q
         )
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "Store keeps records."}
-    # ask() also receives the collection and the cloned-repo path the route
-    # derives from it; build the expected path the same way the route does so
-    # this holds on any platform.
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert sse_events(response) == list(events)
+
+
+def test_query_passes_the_question_collection_and_repo_path_to_the_agent(
+    client, healthy_qdrant
+):
+    # ask_stream() also receives the collection and the cloned-repo path the
+    # route derives from it; build the expected path the same way the route
+    # does so this holds on any platform.
     from lumora.api.routes.query import _CLONE_BASE
 
-    ask.assert_called_once_with(
+    spy = MagicMock(side_effect=fake_stream(ANSWER_EVENT))
+    with patch("lumora.api.routes.query.ask_stream", spy):
+        client.post(
+            "/query",
+            headers=AUTH,
+            json={"question": "What does Store do?", "collection": "demo"},
+        )
+
+    spy.assert_called_once_with(
         "What does Store do?", "demo", str(_CLONE_BASE / "demo")
     )
 
 
-def test_query_response_body_carries_only_the_answer_field(client, healthy_qdrant):
-    """QueryResponse is the contract; nothing else may leak into the body."""
-    with patch("lumora.api.routes.query.ask", return_value="ok"):
+def test_query_emits_a_terminal_final_answer_event(client, healthy_qdrant):
+    """The last frame must always be the answer the client renders."""
+    with patch("lumora.api.routes.query.ask_stream", fake_stream(ANSWER_EVENT)):
         response = client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
         )
 
-    body = response.json()
-    assert list(body) == ["answer"]
-    assert isinstance(body["answer"], str)
+    last = sse_events(response)[-1]
+    assert last["type"] == "final_answer"
+    assert last["text"] == "Store keeps records."
 
 
 def test_query_checks_the_requested_collection(client, healthy_qdrant):
-    with patch("lumora.api.routes.query.ask", return_value="ok"):
+    with patch("lumora.api.routes.query.ask_stream", fake_stream(ANSWER_EVENT)):
         client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "my_repo"}
         )
@@ -259,29 +300,49 @@ def test_query_checks_the_requested_collection(client, healthy_qdrant):
 
 
 def test_query_returns_404_for_an_unknown_collection(client):
+    """The collection check runs before streaming starts, so an unknown
+    collection is still a real HTTP error rather than an SSE frame."""
     stub = MagicMock()
     stub.collection_exists.return_value = False
 
     with patch("lumora.api.routes.query.qdrant_client", stub), patch(
-        "lumora.api.routes.query.ask"
-    ) as ask:
+        "lumora.api.routes.query.ask_stream"
+    ) as ask_stream:
         response = client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "missing"}
         )
 
     assert response.status_code == 404
     assert "missing" in response.json()["detail"]
-    ask.assert_not_called()
+    ask_stream.assert_not_called()
 
 
-def test_query_returns_500_when_the_agent_raises(client, healthy_qdrant):
-    with patch("lumora.api.routes.query.ask", side_effect=RuntimeError("groq exploded")):
+def test_query_streams_an_error_event_when_the_agent_raises(client, healthy_qdrant):
+    """Once the 200 status line is sent, a mid-stream failure cannot become a
+    500 — it must arrive as a terminal error event instead."""
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("groq exploded")
+        yield  # pragma: no cover - makes this a generator function
+
+    with patch("lumora.api.routes.query.ask_stream", boom):
         response = client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
         )
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to answer question"
+    last = sse_events(response)[-1]
+    assert last == {"type": "error", "message": "Failed to answer question"}
+
+
+def test_query_does_not_leak_the_underlying_agent_error(client, healthy_qdrant):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("groq exploded")
+        yield  # pragma: no cover - makes this a generator function
+
+    with patch("lumora.api.routes.query.ask_stream", boom):
+        response = client.post(
+            "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
+        )
+
     assert "groq exploded" not in response.text
 
 
@@ -360,28 +421,58 @@ def test_index_surfaces_pipeline_failure_as_500(handled_client):
 # --- timeout and rate limiting --------------------------------------------------
 
 
-def test_query_returns_504_when_the_agent_exceeds_the_timeout(client, healthy_qdrant):
-    """QUERY_TIMEOUT_SECONDS is enforced with asyncio.wait_for; patch it to a
-    value the stubbed agent is guaranteed to blow through."""
+def test_query_streams_a_timeout_event_when_the_agent_stalls(client, healthy_qdrant):
+    """QUERY_TIMEOUT_SECONDS now bounds the gap *between* events rather than the
+    whole response, and a stall arrives as a terminal error event because the
+    200 status line has already been sent."""
     import time
 
+    def stalls(*_args, **_kwargs):
+        time.sleep(1)
+        yield ANSWER_EVENT
+
     with patch("lumora.api.routes.query.QUERY_TIMEOUT_SECONDS", 0.05), patch(
-        "lumora.api.routes.query.ask",
-        side_effect=lambda q, collection, repo_root: time.sleep(1) or "late",
+        "lumora.api.routes.query.ask_stream", stalls
     ):
         response = client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
         )
 
-    assert response.status_code == 504
-    assert response.json()["detail"] == "Agent query timed out"
+    assert response.status_code == 200
+    assert sse_events(response)[-1] == {
+        "type": "error",
+        "message": "Agent query timed out",
+    }
+
+
+def test_a_slow_but_progressing_agent_is_not_timed_out(client, healthy_qdrant):
+    """Regression guard: the timeout must reset on each event, so a long answer
+    made of several slow-but-steady steps streams through intact."""
+    import time
+
+    def slow_steps(*_args, **_kwargs):
+        for _ in range(3):
+            time.sleep(0.08)
+            yield {"type": "tool_call", "name": "search_code", "input": "x"}
+        yield ANSWER_EVENT
+
+    with patch("lumora.api.routes.query.QUERY_TIMEOUT_SECONDS", 0.5), patch(
+        "lumora.api.routes.query.ask_stream", slow_steps
+    ):
+        response = client.post(
+            "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
+        )
+
+    events = sse_events(response)
+    assert len(events) == 4
+    assert events[-1]["type"] == "final_answer"
 
 
 def test_query_is_rate_limited_after_the_configured_burst(client, healthy_qdrant):
     """The 21st call in a minute must be rejected, not passed to the agent."""
     from lumora.core.config import RATE_LIMIT_PER_MINUTE
 
-    with patch("lumora.api.routes.query.ask", return_value="ok"):
+    with patch("lumora.api.routes.query.ask_stream", fake_stream(ANSWER_EVENT)):
         codes = [
             client.post(
                 "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
@@ -396,7 +487,7 @@ def test_query_is_rate_limited_after_the_configured_burst(client, healthy_qdrant
 def test_rate_limiter_state_is_isolated_between_tests(client, healthy_qdrant):
     """Proves the reset fixture works: a full burst still succeeds here even
     though the previous test exhausted the same per-IP budget."""
-    with patch("lumora.api.routes.query.ask", return_value="ok"):
+    with patch("lumora.api.routes.query.ask_stream", fake_stream(ANSWER_EVENT)):
         response = client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
         )
