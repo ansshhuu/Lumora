@@ -8,6 +8,11 @@ from unittest.mock import MagicMock, patch
 
 from lumora.agent.graph import PREVIEW_CHARS, RECURSION_LIMIT, _log_step, _preview, ask
 
+# ask() binds per-request context before streaming; these stand in for the real
+# Qdrant collection and cloned-repo path, which the patched agent never touches.
+COLLECTION = "test-collection"
+REPO_ROOT = "/tmp/test-repo"
+
 
 def message(content="", tool_calls=None, name=None):
     msg = MagicMock()
@@ -90,7 +95,7 @@ def stream_yielding(*updates):
 def test_ask_returns_the_final_agent_message():
     patcher, _ = stream_yielding({"agent": {"messages": [message(content="42")]}})
     with patcher:
-        assert ask("what is 6*7?") == "42"
+        assert ask("what is 6*7?", COLLECTION, REPO_ROOT) == "42"
 
 
 def test_ask_returns_the_last_message_when_several_arrive():
@@ -100,13 +105,13 @@ def test_ask_returns_the_last_message_when_several_arrive():
         {"agent": {"messages": [message(content="final answer")]}},
     )
     with patcher:
-        assert ask("q") == "final answer"
+        assert ask("q", COLLECTION, REPO_ROOT) == "final answer"
 
 
 def test_ask_passes_the_question_through_to_the_agent():
     patcher, agent = stream_yielding({"agent": {"messages": [message(content="ok")]}})
     with patcher:
-        ask("how does Store work?")
+        ask("how does Store work?", COLLECTION, REPO_ROOT)
 
     payload = agent.stream.call_args.args[0]
     assert payload["messages"][0]["content"] == "how does Store work?"
@@ -116,7 +121,7 @@ def test_ask_caps_the_tool_loop_with_a_recursion_limit():
     """A confused agent must not loop indefinitely."""
     patcher, agent = stream_yielding({"agent": {"messages": [message(content="ok")]}})
     with patcher:
-        ask("q")
+        ask("q", COLLECTION, REPO_ROOT)
 
     assert agent.stream.call_args.kwargs["config"]["recursion_limit"] == RECURSION_LIMIT
 
@@ -126,7 +131,7 @@ def test_ask_returns_a_readable_error_when_the_agent_raises():
     agent.stream.side_effect = RuntimeError("groq timeout")
 
     with patch("lumora.agent.graph.get_agent", return_value=agent):
-        result = ask("q")
+        result = ask("q", COLLECTION, REPO_ROOT)
 
     assert result.startswith("Error: agent failed to answer")
     assert "groq timeout" in result
@@ -135,7 +140,7 @@ def test_ask_returns_a_readable_error_when_the_agent_raises():
 def test_ask_reports_an_empty_stream_rather_than_crashing():
     patcher, _ = stream_yielding()
     with patcher:
-        assert ask("q") == "Error: agent returned no response."
+        assert ask("q", COLLECTION, REPO_ROOT) == "Error: agent returned no response."
 
 
 def test_ask_reports_no_response_when_only_tool_updates_arrive():
@@ -143,4 +148,4 @@ def test_ask_reports_no_response_when_only_tool_updates_arrive():
         {"tools": {"messages": [message(content="tool only", name="search_code")]}}
     )
     with patcher:
-        assert ask("q") == "Error: agent returned no response."
+        assert ask("q", COLLECTION, REPO_ROOT) == "Error: agent returned no response."

@@ -227,7 +227,14 @@ def test_query_with_mocked_agent_returns_200_and_correct_shape(client, healthy_q
 
     assert response.status_code == 200
     assert response.json() == {"answer": "Store keeps records."}
-    ask.assert_called_once_with("What does Store do?")
+    # ask() also receives the collection and the cloned-repo path the route
+    # derives from it; build the expected path the same way the route does so
+    # this holds on any platform.
+    from lumora.api.routes.query import _CLONE_BASE
+
+    ask.assert_called_once_with(
+        "What does Store do?", "demo", str(_CLONE_BASE / "demo")
+    )
 
 
 def test_query_response_body_carries_only_the_answer_field(client, healthy_qdrant):
@@ -359,7 +366,8 @@ def test_query_returns_504_when_the_agent_exceeds_the_timeout(client, healthy_qd
     import time
 
     with patch("lumora.api.routes.query.QUERY_TIMEOUT_SECONDS", 0.05), patch(
-        "lumora.api.routes.query.ask", side_effect=lambda q: time.sleep(1) or "late"
+        "lumora.api.routes.query.ask",
+        side_effect=lambda q, collection, repo_root: time.sleep(1) or "late",
     ):
         response = client.post(
             "/query", headers=AUTH, json={"question": "q", "collection": "demo"}
