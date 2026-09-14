@@ -2,10 +2,11 @@
  * ConnectRepo.tsx — Lumora landing screen.
  *
  * Dark lab-instrument aesthetic:
- *   - Animated constellation canvas (sparse network graph, slow drift)
- *   - Monospace font throughout (IBM Plex Mono)
+ *   - Ambient constellation canvas (sparse network graph, slow drift). This one
+ *     is decorative; the post-scan Constellation is laid out from real graph data.
+ *   - Grotesk for the wordmark and labels, JetBrains Mono for code and URLs
  *   - Cyan #4DE8D8 as the only accent colour
- *   - Near-black #050608 background, flat — no gradients, no blur
+ *   - Near-black #050608 background, flat — no gradients, no blur, no glow
  *
  * NOT IMPLEMENTED (single-user scope):
  *   - Repo history list
@@ -146,13 +147,14 @@ function ConstellationCanvas({ scanning }: { scanning: boolean }) {
           const centerFactor = Math.max(0, 1 - mDist / centerRadius);
 
           if (centerFactor > 0.05 || isScanning) {
-            // Cyan glow near center (or during scan)
-            const glowAlpha =
-              centerFactor * fade * (0.25 + pulse * 0.35) * (isScanning ? 1.4 : 1);
+            // Cyan lift near the centre (and while scanning) — an edge reading
+            // as live, not a bloom. Alpha only; the line stays 1px and crisp.
+            const liftAlpha =
+              centerFactor * fade * (0.16 + pulse * 0.2) * (isScanning ? 1.4 : 1);
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
             ctx.lineTo(b.x, b.y);
-            ctx.strokeStyle = `rgba(77,232,216,${Math.min(glowAlpha, 0.7)})`;
+            ctx.strokeStyle = `rgba(77,232,216,${Math.min(liftAlpha, 0.42)})`;
             ctx.lineWidth = 1;
             ctx.stroke();
           } else {
@@ -167,17 +169,24 @@ function ConstellationCanvas({ scanning }: { scanning: boolean }) {
         }
       }
 
-      // Draw nodes + labels
-      ctx.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
+      // Draw nodes + labels — solid dot, thin ring, no glow.
+      ctx.font =
+        "9px var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace";
       for (const n of nodes) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.size, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(200,210,225,0.55)";
+        ctx.fillStyle = "rgba(237,239,242,0.5)";
         ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.size + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(237,239,242,0.1)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
 
         if (n.size > 2.0) {
           ctx.fillStyle = "rgba(122,132,148,0.55)";
-          ctx.fillText(n.label, n.x + 5, n.y - 3);
+          ctx.fillText(n.label, n.x + 6, n.y - 3);
         }
       }
 
@@ -221,12 +230,18 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
   const succeeded = phase === "success";
 
   const MONO: React.CSSProperties = {
-    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontFamily:
+      "var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace",
   };
 
   async function handleSubmit() {
+    if (disabled) return;
     const trimmed = url.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed) {
+      setErrorMsg("Please include a valid repository");
+      inputRef.current?.focus();
+      return;
+    }
 
     setErrorMsg(null);
     setPhase("submitting");
@@ -271,9 +286,11 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
           0%   { width: 88%;  opacity: 0.9; }
           100% { width: 100%; opacity: 1; }
         }
+        /* A thin ring that ticks outward — measurement, not luminescence. */
         @keyframes cx-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(77,232,216,0); }
-          50%       { box-shadow: 0 0 8px 2px rgba(77,232,216,0.18); }
+          0%   { box-shadow: 0 0 0 0 rgba(77,232,216,0.5); }
+          70%  { box-shadow: 0 0 0 3px rgba(77,232,216,0); }
+          100% { box-shadow: 0 0 0 3px rgba(77,232,216,0); }
         }
         .lumora-input:focus {
           outline: none;
@@ -359,7 +376,10 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
               className="lumora-input"
               type="url"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (errorMsg) setErrorMsg(null);
+              }}
               onKeyDown={handleKeyDown}
               disabled={disabled}
               placeholder="owner/repo"
@@ -372,7 +392,9 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
                 fontSize: "12px",
                 color: "#EDEFF2",
                 background: "transparent",
-                border: "1px solid #3A4250",
+                borderTop: errorMsg ? "1px solid #C4645A" : "1px solid #3A4250",
+                borderBottom: errorMsg ? "1px solid #C4645A" : "1px solid #3A4250",
+                borderLeft: errorMsg ? "1px solid #C4645A" : "1px solid #3A4250",
                 borderRight: "none",
                 borderRadius: "2px 0 0 2px",
                 padding: "0.6rem 0.75rem",
@@ -400,8 +422,7 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
                 letterSpacing: "0.08em",
                 color: succeeded ? "#EDEFF2" : "#4DE8D8",
                 background: "transparent",
-                border: "1px solid",
-                borderColor: succeeded ? "#3A4250" : "#4DE8D8",
+                border: succeeded ? "1px solid #3A4250" : "1px solid #4DE8D8",
                 borderRadius: "0 2px 2px 0",
                 padding: "0.6rem 0.9rem",
                 cursor: "pointer",

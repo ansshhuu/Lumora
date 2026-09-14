@@ -245,7 +245,7 @@
     --default-transition-duration: .15s;
     --default-transition-timing-function: cubic-bezier(.4, 0, .2, 1);
     --default-font-family: var(--font-inter);
-    --default-mono-font-family: var(--font-ibm-plex-mono);
+    --default-mono-font-family: var(--font-jetbrains-mono);
   }
 }
 
@@ -1066,12 +1066,13 @@
 }
 
 :root {
-  --ink: #0d1117;
-  --paper: #e8e6dd;
-  --signal: #5fb89c;
-  --pending: #c9a15e;
-  --wire: #242b36;
-  --ghost: #6b7280;
+  --ink: #050608;
+  --panel: #0c0e12;
+  --paper: #edeff2;
+  --signal: #4de8d8;
+  --wire: #3a4250;
+  --ghost: #7a8494;
+  --gold: #c9a84c;
   --error: #c4645a;
 }
 
@@ -1131,29 +1132,33 @@ html, body {
   }
 }
 
-@keyframes trace-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pending) 40%, transparent);
+@keyframes trace-ring {
+  0% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 70%, transparent);
   }
 
-  50% {
-    box-shadow: 0 0 6px 3px color-mix(in srgb, var(--pending) 30%, transparent);
+  70% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 0%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 0%, transparent);
   }
 }
 
 .trace-dot-active {
-  animation: 2s ease-in-out infinite trace-glow;
+  animation: 2s ease-out infinite trace-ring;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .trace-dot-active {
-    box-shadow: 0 0 0 2px var(--pending);
+    box-shadow: 0 0 0 1px var(--signal);
     animation: none;
   }
 
   @supports (color: color-mix(in lab, red, red)) {
     .trace-dot-active {
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--pending) 30%, transparent);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 70%, transparent);
     }
   }
 }

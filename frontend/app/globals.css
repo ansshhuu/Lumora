@@ -1,13 +1,16 @@
 @import "tailwindcss";
 
 /* ─── Lumora design tokens ─────────────────────────────────────────────── */
+/* Dark lab instrument. Single accent — cyan. No glow, no amber. */
 :root {
-  --ink:     #0D1117;
-  --paper:   #E8E6DD;
-  --signal:  #5FB89C;
-  --pending: #C9A15E;
-  --wire:    #242B36;
-  --ghost:   #6B7280;
+  --ink:     #050608;  /* black    — page ground   */
+  --panel:   #0C0E12;  /* panel    — raised surface */
+  --paper:   #EDEFF2;  /* cool white — primary text */
+  --signal:  #4DE8D8;  /* cyan     — the only accent */
+  --wire:    #3A4250;  /* slate    — borders, edges */
+  --ghost:   #7A8494;  /* grey     — muted text     */
+  /* Restrained pale gold. Second tone, used rarely — never as a glow. */
+  --gold:    #C9A84C;
   /* Error color — used ONLY in ConnectRepo error messages */
   --error:   #C4645A;
 }
@@ -15,15 +18,16 @@
 /* Tailwind v4 CSS-first theme extension */
 @theme inline {
   --color-ink:     var(--ink);
+  --color-panel:   var(--panel);
   --color-paper:   var(--paper);
   --color-signal:  var(--signal);
-  --color-pending: var(--pending);
   --color-wire:    var(--wire);
   --color-ghost:   var(--ghost);
+  --color-gold:    var(--gold);
   --color-error:   var(--error);
 
   --font-sans:  var(--font-inter);
-  --font-mono:  var(--font-ibm-plex-mono);
+  --font-mono:  var(--font-jetbrains-mono);
 }
 
 /* ─── Base reset ───────────────────────────────────────────────────────── */
@@ -67,18 +71,23 @@ html, body {
   .signal-pulse { animation: none; }
 }
 
-/* ─── Active trace dot glow ────────────────────────────────────────────── */
-@keyframes trace-glow {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pending) 40%, transparent); }
-  50%       { box-shadow: 0 0 6px 3px color-mix(in srgb, var(--pending) 30%, transparent); }
+/* ─── Active trace dot ─────────────────────────────────────────────────── */
+/* A thin ring that ticks outward — measurement, not luminescence. */
+@keyframes trace-ring {
+  0%   { box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 70%, transparent); }
+  70%  { box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 0%, transparent); }
+  100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 0%, transparent); }
 }
 
 .trace-dot-active {
-  animation: trace-glow 2s ease-in-out infinite;
+  animation: trace-ring 2s ease-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .trace-dot-active { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pending) 30%, transparent); }
+  .trace-dot-active {
+    animation: none;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal) 70%, transparent);
+  }
 }
 
 /* ─── Suggested question hover ─────────────────────────────────────────── */
@@ -97,7 +106,7 @@ html, body {
   cursor: pointer;
   padding: 0;
   color: var(--paper);
-  font-family: var(--font-ibm-plex-mono), monospace;
+  font-family: var(--font-jetbrains-mono), monospace;
   font-size: 0.8125rem;
 }
 .repo-selector:focus-visible {

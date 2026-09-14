@@ -11,7 +11,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from lumora.api.limiter import limiter
-from lumora.api.routes import health, index, query
+from lumora.api.routes import graph, health, index, query
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(health.router)
 app.include_router(index.router)
 app.include_router(query.router)
+app.include_router(graph.router)
 
 
 @app.exception_handler(Exception)

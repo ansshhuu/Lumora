@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import QuestionPanel from "./components/QuestionPanel";
 import TracePanel from "./components/TracePanel";
+import Constellation from "./components/Constellation";
 import ConnectRepo, { ActiveRepo } from "./components/ConnectRepo";
-import { TraceAnswer, TraceStep } from "@/lib/types";
-import { queryRepo, isQueryError } from "@/lib/api";
+import { GraphNode, RepoGraph, TraceAnswer, TraceStep } from "@/lib/types";
+import { queryRepo, isQueryError, fetchGraph, isGraphError } from "@/lib/api";
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
@@ -19,6 +20,57 @@ export default function Home() {
   const [answer, setAnswer] = useState<TraceAnswer | undefined>(undefined);
   const [queryError, setQueryError] = useState<string | null>(null);
 
+  // Dependency graph — drives the constellation layout. Tagged with the
+  // collection it came from so a result arriving after a repo switch is
+  // ignored rather than rendered against the wrong repo.
+  const [loaded, setLoaded] = useState<{
+    collection: string;
+    graph: RepoGraph | null;
+    error: string | null;
+  } | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [litPath, setLitPath] = useState<string[]>([]);
+
+  const collection = activeRepo?.collection;
+  const current = loaded?.collection === collection ? loaded : null;
+  const graph = current?.graph ?? null;
+  const graphError = current?.error ?? null;
+
+  useEffect(() => {
+    if (!collection) return;
+
+    const controller = new AbortController();
+
+    fetchGraph(collection, 100, API_KEY, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      if (isGraphError(result)) {
+        // "cancelled" is this effect superseding itself, not a real failure.
+        if (result.error !== "cancelled") {
+          setLoaded({ collection, graph: null, error: result.error });
+        }
+        return;
+      }
+      setLoaded({ collection, graph: result, error: null });
+    });
+
+    return () => controller.abort();
+  }, [collection]);
+
+  // The agent names files and symbols as it works; lighting the matching nodes
+  // turns the constellation into a live readout of where the answer comes from.
+  const lightMentions = useCallback(
+    (text: string) => {
+      if (!graph) return;
+      const hits = graph.nodes
+        .filter((n) => text.includes(n.file) || text.includes(n.label))
+        .map((n) => n.id);
+      if (hits.length > 0) {
+        setLitPath((prev) => Array.from(new Set([...prev, ...hits])));
+      }
+    },
+    [graph]
+  );
+
   // No repo connected yet — show the connect screen.
   if (!activeRepo) {
     return <ConnectRepo onConnected={setActiveRepo} />;
@@ -31,6 +83,7 @@ export default function Home() {
     setSteps([]);
     setAnswer(undefined);
     setQueryError(null);
+    setLitPath([]);
     setThinking(true);
 
     // Wall-clock start for each in-flight step, keyed by step id. Held in a
@@ -45,6 +98,7 @@ export default function Home() {
         if (event.type === "tool_call") {
           const id = `step-${seq++}`;
           startedAt.set(id, performance.now());
+          lightMentions(event.input);
           setSteps((prev) => [
             ...prev,
             {
@@ -65,10 +119,12 @@ export default function Home() {
           );
           startedAt.clear();
           setSteps([]);
+          setLitPath([]);
           return;
         }
 
         if (event.type === "tool_result") {
+          lightMentions(event.preview);
           // Close the most recent still-active step for this tool: the agent
           // may call the same tool several times, and results arrive in order.
           setSteps((prev) => {
@@ -137,13 +193,13 @@ export default function Home() {
           <div className="hidden sm:flex items-center gap-1.5">
             <span
               className="text-[var(--ghost)] text-xs"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+              style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
             >
               repo:
             </span>
             <span
               className="text-[var(--paper)] text-xs"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+              style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
             >
               {activeRepo.label}
             </span>
@@ -156,6 +212,8 @@ export default function Home() {
                 setSteps([]);
                 setAnswer(undefined);
                 setQueryError(null);
+                setLitPath([]);
+                setSelectedNode(null);
                 setThinking(false);
               }}
               aria-label="Connect a different repository"
@@ -182,7 +240,31 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right: live indicator */}
+        {/* Right: selected symbol + live indicator */}
+        {selectedNode && (
+          <div className="hidden md:flex min-w-0 items-center gap-1.5 px-4">
+            <span
+              className="text-[10px] uppercase tracking-[0.14em] text-[var(--ghost)]"
+              style={{ fontFamily: "var(--font-inter, sans-serif)" }}
+            >
+              Selected
+            </span>
+            <span
+              className="truncate text-xs text-[var(--signal)]"
+              style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
+            >
+              {selectedNode.qualified ?? selectedNode.label}
+            </span>
+            <span
+              className="truncate text-[11px] text-[var(--ghost)]"
+              style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
+            >
+              {selectedNode.file}
+              {selectedNode.line ? `:${selectedNode.line}` : ""}
+            </span>
+          </div>
+        )}
+
         <div
           className="flex items-center gap-2"
           style={{ fontFamily: "var(--font-inter, sans-serif)" }}
@@ -211,19 +293,51 @@ export default function Home() {
           <QuestionPanel onSubmit={handleQuestion} disabled={thinking} />
         </section>
 
-        {/* Right column — Trace panel (65%) */}
-        <section
-          id="trace-panel"
-          aria-label="Trace output"
-          className="flex-1 overflow-y-auto"
-        >
-          <TracePanel
-            steps={steps}
-            answer={answer}
-            thinking={thinking}
-            error={queryError}
-          />
-        </section>
+        {/* Right column — Constellation over trace output */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <section
+            id="constellation"
+            aria-label="Repository structure"
+            className="relative flex-shrink-0 border-b border-[var(--wire)]"
+            style={{ height: "42%", minHeight: "220px" }}
+          >
+            {graph ? (
+              // Keyed per repo: hover and selection hold node ids from the
+              // graph that produced them and must not outlive it.
+              <Constellation
+                key={collection}
+                graph={graph}
+                litPath={litPath}
+                onSelect={setSelectedNode}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <span
+                  className="text-[11px]"
+                  style={{
+                    fontFamily: "var(--font-jetbrains-mono, monospace)",
+                    color: graphError ? "var(--error)" : "var(--ghost)",
+                  }}
+                >
+                  {graphError ?? "resolving structure…"}
+                </span>
+              </div>
+            )}
+          </section>
+
+          <section
+            id="trace-panel"
+            aria-label="Trace output"
+            className="flex-1 overflow-y-auto"
+          >
+            <TracePanel
+              steps={steps}
+              answer={answer}
+              thinking={thinking}
+              error={queryError}
+            />
+          </section>
+        </div>
       </main>
     </div>
   );

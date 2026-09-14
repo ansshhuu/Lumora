@@ -66,7 +66,7 @@ export default function QuestionPanel({ onSubmit, disabled = false }: QuestionPa
             disabled={disabled}
             className="w-full resize-none bg-transparent text-[var(--paper)] text-sm leading-relaxed px-3 py-3 pr-10 placeholder:text-[var(--ghost)] focus:outline-none"
             style={{
-              fontFamily: "var(--font-ibm-plex-mono, monospace)",
+              fontFamily: "var(--font-jetbrains-mono, monospace)",
               borderRadius: "4px",
               opacity: disabled ? 0.5 : 1,
               transition: "opacity 0.15s ease",

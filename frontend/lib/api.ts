@@ -6,7 +6,7 @@
  * so the browser never makes a cross-origin request — no CORS headers required.
  */
 
-import { QueryEvent } from "@/lib/types";
+import { QueryEvent, RepoGraph } from "@/lib/types";
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? "";
 
@@ -39,6 +39,61 @@ export function isQueryError(r: QueryResult): r is QueryError {
 
 export function isIndexError(r: IndexResult): r is IndexError {
   return "error" in r;
+}
+
+export type GraphResult = RepoGraph | { error: string };
+
+export function isGraphError(r: GraphResult): r is { error: string } {
+  return "error" in r;
+}
+
+/**
+ * GET /graph — Fetch the dependency graph for an indexed repository.
+ *
+ * The layout is derived entirely from these edges, so a repo that has not been
+ * indexed yet comes back as an { error } rather than an empty graph — an empty
+ * constellation and a missing one should not look identical on screen.
+ */
+export async function fetchGraph(
+  collection: string,
+  maxNodes = 100,
+  apiKey: string = API_KEY,
+  signal?: AbortSignal
+): Promise<GraphResult> {
+  try {
+    const params = new URLSearchParams({
+      collection,
+      max_nodes: String(maxNodes),
+    });
+    const res = await fetch(`/api/graph?${params}`, {
+      headers: { ...(apiKey ? { "X-API-Key": apiKey } : {}) },
+      signal,
+    });
+
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        message = body.detail ?? body.message ?? body.error ?? JSON.stringify(body);
+      } catch {
+        try {
+          message = await res.text();
+        } catch {
+          /* leave message as the HTTP status */
+        }
+      }
+      return { error: message };
+    }
+
+    return (await res.json()) as RepoGraph;
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return { error: "cancelled" };
+    }
+    const message =
+      err instanceof Error ? err.message : "network error — could not reach backend";
+    return { error: message };
+  }
 }
 
 /**

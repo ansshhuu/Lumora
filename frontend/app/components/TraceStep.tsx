@@ -22,7 +22,7 @@ export default function TraceStep({ step }: TraceStepProps) {
         )}
         {status === "active" && (
           <span
-            className="trace-dot-active block rounded-full bg-[var(--pending)]"
+            className="trace-dot-active block rounded-full bg-[var(--signal)]"
             style={{ width: "8px", height: "8px" }}
             aria-label="Active"
           />
@@ -47,7 +47,7 @@ export default function TraceStep({ step }: TraceStepProps) {
           {/* Tool name */}
           <span
             className="text-[var(--paper)] text-sm font-medium leading-tight truncate"
-            style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+            style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
           >
             {toolName}
           </span>
@@ -55,7 +55,7 @@ export default function TraceStep({ step }: TraceStepProps) {
           {elapsedSeconds !== undefined && (
             <span
               className="flex-shrink-0 text-[var(--ghost)] text-xs tabular-nums"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+              style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
             >
               {elapsedSeconds.toFixed(1)}s
             </span>
@@ -64,7 +64,7 @@ export default function TraceStep({ step }: TraceStepProps) {
         {/* Description */}
         <p
           className="mt-0.5 text-[var(--ghost)] text-xs leading-snug"
-          style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+          style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}
         >
           {description}
         </p>

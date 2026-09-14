@@ -27,7 +27,7 @@ function highlightLine(line: string): React.ReactNode {
     // keywords
     {
       re: /^(const|let|var|if|else|return|function|async|await|import|export|from|default|new|class|typeof|void|null|undefined|true|false|throw|try|catch|finally)\b/,
-      className: "text-[var(--pending)]",
+      className: "text-[var(--signal)]",
     },
   ];
 
@@ -80,7 +80,7 @@ function CodeExcerpt({
         padding: "12px 0",
       }}
     >
-      <table className="w-full border-collapse text-xs" style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}>
+      <table className="w-full border-collapse text-xs" style={{ fontFamily: "var(--font-jetbrains-mono, monospace)" }}>
         <tbody>
           {lines.map((line, i) => (
             <tr key={i} className="leading-relaxed">
@@ -120,7 +120,7 @@ const answerMarkdownComponents: Components = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-[var(--pending)] underline-offset-2 hover:underline focus-visible:underline"
+      className="text-[var(--signal)] underline-offset-2 hover:underline focus-visible:underline"
     >
       {children}
     </a>
@@ -159,7 +159,7 @@ const answerMarkdownComponents: Components = {
       <table
         className="w-full border-collapse text-xs"
         style={{
-          fontFamily: "var(--font-ibm-plex-mono, monospace)",
+          fontFamily: "var(--font-jetbrains-mono, monospace)",
           border: "1px solid var(--wire)",
         }}
       >
@@ -195,7 +195,7 @@ const answerMarkdownComponents: Components = {
         background: "color-mix(in srgb, var(--wire) 40%, var(--ink))",
         borderRadius: "2px",
         padding: "12px",
-        fontFamily: "var(--font-ibm-plex-mono, monospace)",
+        fontFamily: "var(--font-jetbrains-mono, monospace)",
       }}
     >
       {children}
@@ -215,7 +215,7 @@ const answerMarkdownComponents: Components = {
           background: "color-mix(in srgb, var(--wire) 40%, var(--ink))",
           borderRadius: "2px",
           padding: "1px 4px",
-          fontFamily: "var(--font-ibm-plex-mono, monospace)",
+          fontFamily: "var(--font-jetbrains-mono, monospace)",
           fontSize: "0.8125rem",
         }}
       >
@@ -231,10 +231,10 @@ export default function TracePanel({ steps, answer, thinking, error }: TracePane
       {/* "trace" label + rule */}
       <div className="flex items-center gap-3 mb-2">
         <span
-          className="text-[var(--ghost)] text-xs"
-          style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+          className="text-[var(--ghost)] text-[10px] uppercase tracking-[0.14em]"
+          style={{ fontFamily: "var(--font-inter, sans-serif)" }}
         >
-          trace
+          Trace
         </span>
         <div className="flex-1 border-t border-[var(--wire)]" />
       </div>
@@ -258,15 +258,15 @@ export default function TracePanel({ steps, answer, thinking, error }: TracePane
             aria-label="Thinking…"
           >
             <span
-              className="trace-dot-active block rounded-full bg-[var(--pending)] shrink-0"
+              className="trace-dot-active block rounded-full bg-[var(--signal)] shrink-0"
               style={{ width: "8px", height: "8px" }}
               aria-hidden="true"
             />
             <span
               className="text-[var(--ghost)] text-xs"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+              style={{ fontFamily: "var(--font-inter, sans-serif)" }}
             >
-              thinking...
+              Thinking…
             </span>
           </div>
         )}
@@ -300,10 +300,10 @@ export default function TracePanel({ steps, answer, thinking, error }: TracePane
           <div className="mt-4 ml-8">
             <div className="border-t border-[var(--wire)] mb-3" />
             <p
-              className="text-[var(--ghost)] text-xs mb-3"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+              className="text-[var(--ghost)] text-[10px] uppercase tracking-[0.14em] mb-3"
+              style={{ fontFamily: "var(--font-inter, sans-serif)" }}
             >
-              answer
+              Answer
             </p>
 
             {/* Answer text — markdown from the model, rendered with the trace tokens */}
@@ -323,9 +323,9 @@ export default function TracePanel({ steps, answer, thinking, error }: TracePane
               {answer.citation && (
                 <p className="mt-2">
                   <button
-                    className="text-[var(--pending)] cursor-pointer underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none transition-none"
+                    className="text-[var(--signal)] cursor-pointer underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none transition-none"
                     style={{
-                      fontFamily: "var(--font-ibm-plex-mono, monospace)",
+                      fontFamily: "var(--font-jetbrains-mono, monospace)",
                       fontSize: "0.75rem",
                       background: "none",
                       border: "none",
@@ -355,9 +355,9 @@ export default function TracePanel({ steps, answer, thinking, error }: TracePane
           <div className="flex items-center mt-4">
             <p
               className="text-[var(--ghost)] text-xs"
-              style={{ fontFamily: "var(--font-ibm-plex-mono, monospace)" }}
+              style={{ fontFamily: "var(--font-inter, sans-serif)" }}
             >
-              ask a question to see the answer here
+              Ask a question to see the answer here
             </p>
           </div>
         )}
