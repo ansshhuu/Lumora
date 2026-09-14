@@ -35,13 +35,12 @@ MODEL_NAME = "openai/gpt-oss-120b"
 # API rejects zero.  That is still effectively greedy, so the 0 here is honest
 # about intent -- don't "fix" the 1e-8 if you see it in a request payload.
 TEMPERATURE = 0
-# RECURSION_LIMIT caps the agent's tool-call loop.  10 is the LangGraph
-# default and keeps Groq free-tier token burn reasonable, but very broad
-# questions ("explain the whole repo") may legitimately need more steps.
-# Raising to 15 would give the agent more headroom at the cost of ~50% more
-# tokens per worst-case query.  Left at 10 for now; revisit if the custom
-# recursion-error message fires too often on legitimate questions.
-RECURSION_LIMIT = 10
+# RECURSION_LIMIT caps the agent's tool-call loop.  LangGraph's default is 10,
+# which cut off broad questions ("explain the whole repo") mid-search and fired
+# the custom recursion-error message on legitimate work.  18 gives the agent
+# room for roughly eight more tool calls at the cost of more tokens per
+# worst-case query; lower it if Groq free-tier burn becomes the binding limit.
+RECURSION_LIMIT = 18
 PREVIEW_CHARS = 300
 
 TOOLS = [search_code, fetch_file, get_repo_structure, find_function]
