@@ -1,17 +1,25 @@
 /*
- * ConnectRepo.tsx — Entry screen for Lumora.
+ * ConnectRepo.tsx — Lumora landing screen.
+ *
+ * Dark lab-instrument aesthetic:
+ *   - Animated constellation canvas (sparse network graph, slow drift)
+ *   - Monospace font throughout (IBM Plex Mono)
+ *   - Cyan #4DE8D8 as the only accent colour
+ *   - Near-black #050608 background, flat — no gradients, no blur
  *
  * NOT IMPLEMENTED (single-user scope):
- *   - Repo history list (only the currently active repo is tracked in memory)
- *   - Multi-user auth / login (no user system; one API key, one instance)
- *   - Real indexing progress % (backend doesn't expose progress; bar is a pulse animation only)
+ *   - Repo history list
+ *   - Multi-user auth / login
+ *   - Real indexing progress % (bar is animation only)
  *   - Multi-repo simultaneous view
  */
 
 "use client";
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback, KeyboardEvent } from "react";
 import { indexRepo, isIndexError } from "@/lib/api";
+
+/* ─── Types ──────────────────────────────────────────────────────────────── */
 
 export interface ActiveRepo {
   url: string;
@@ -25,25 +33,196 @@ interface ConnectRepoProps {
   onConnected: (repo: ActiveRepo) => void;
 }
 
+type Phase = "idle" | "submitting" | "success";
+
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+
 function repoLabel(url: string): string {
   try {
     const u = new URL(url.trim());
-    // pathname is "/owner/repo" or "/owner/repo.git" etc.
     return u.pathname.replace(/^\//, "").replace(/\.git$/, "");
   } catch {
     return url.trim();
   }
 }
 
-type Phase = "idle" | "submitting" | "success";
+/* ─── Constellation canvas ───────────────────────────────────────────────── */
+
+const FILENAMES = [
+  "main.py", "utils.ts", "index.js", "app.go", "server.rs",
+  "routes.py", "types.ts", "config.yml", "schema.sql", "mod.rs",
+  "handler.go", "api.ts", "models.py", "helpers.js", "parser.ts",
+  "auth.py", "db.ts", "cli.go", "core.rs", "queue.py",
+];
+
+interface StarNode {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  label: string;
+  size: number;
+}
+
+function ConstellationCanvas({ scanning }: { scanning: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef   = useRef<number>(0);
+  const nodesRef  = useRef<StarNode[]>([]);
+  const pulseRef  = useRef(0);
+  const scanRef   = useRef(scanning);
+
+  useEffect(() => { scanRef.current = scanning; }, [scanning]);
+
+  const initNodes = useCallback((w: number, h: number) => {
+    const count = Math.min(50, Math.floor((w * h) / 18000));
+    nodesRef.current = Array.from({ length: count }, (_, i) => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.18,
+      vy: (Math.random() - 0.5) * 0.18,
+      label: FILENAMES[i % FILENAMES.length],
+      size: Math.random() < 0.3 ? 2.5 : 1.8,
+    }));
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+      initNodes(canvas.width, canvas.height);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const MAX_DIST = 180;
+    let last = performance.now();
+
+    const draw = (now: number) => {
+      const dt = Math.min((now - last) / 16.67, 3);
+      last = now;
+      pulseRef.current = (pulseRef.current + dt * 0.012) % (Math.PI * 2);
+      const pulse = (Math.sin(pulseRef.current) + 1) / 2;
+
+      const W = canvas.width;
+      const H = canvas.height;
+      const cx = W / 2;
+      const cy = H / 2;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const nodes = nodesRef.current;
+      const isScanning = scanRef.current;
+
+      // Move nodes — gentle drift, wrap at edges
+      for (const n of nodes) {
+        n.x += n.vx * dt;
+        n.y += n.vy * dt;
+        if (n.x < -20)    n.x = W + 20;
+        if (n.x > W + 20) n.x = -20;
+        if (n.y < -20)    n.y = H + 20;
+        if (n.y > H + 20) n.y = -20;
+      }
+
+      // Draw edges
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i];
+          const b = nodes[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > MAX_DIST) continue;
+
+          const fade = 1 - dist / MAX_DIST;
+          const mx = (a.x + b.x) / 2 - cx;
+          const my = (a.y + b.y) / 2 - cy;
+          const mDist = Math.sqrt(mx * mx + my * my);
+          const centerRadius = Math.min(W, H) * 0.28;
+          const centerFactor = Math.max(0, 1 - mDist / centerRadius);
+
+          if (centerFactor > 0.05 || isScanning) {
+            // Cyan glow near center (or during scan)
+            const glowAlpha =
+              centerFactor * fade * (0.25 + pulse * 0.35) * (isScanning ? 1.4 : 1);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = `rgba(77,232,216,${Math.min(glowAlpha, 0.7)})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          } else {
+            // Plain slate edges
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = `rgba(58,66,80,${fade * 0.09})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes + labels
+      ctx.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.size, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(200,210,225,0.55)";
+        ctx.fill();
+
+        if (n.size > 2.0) {
+          ctx.fillStyle = "rgba(122,132,148,0.55)";
+          ctx.fillText(n.label, n.x + 5, n.y - 3);
+        }
+      }
+
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    animRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      window.removeEventListener("resize", resize);
+    };
+  }, [initNodes]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 0,
+      }}
+    />
+  );
+}
+
+/* ─── Main component ─────────────────────────────────────────────────────── */
 
 export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
-  const [url, setUrl] = useState("");
-  const [phase, setPhase] = useState<Phase>("idle");
+  const [url,      setUrl]      = useState("");
+  const [phase,    setPhase]    = useState<Phase>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const disabled = phase !== "idle";
+  const disabled  = phase !== "idle";
+  const scanning  = phase === "submitting";
+  const succeeded = phase === "success";
+
+  const MONO: React.CSSProperties = {
+    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+  };
 
   async function handleSubmit() {
     const trimmed = url.trim();
@@ -62,8 +241,6 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
     }
 
     setPhase("success");
-
-    // Brief "indexed ✓" moment before handing off.
     setTimeout(() => {
       onConnected({
         url: trimmed,
@@ -82,181 +259,216 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "2rem 1rem",
-        background: "var(--ink)",
-      }}
-    >
+    <>
+      <style>{`
+        @keyframes scan-progress {
+          0%   { width: 0%;  opacity: 1; }
+          55%  { width: 72%; opacity: 1; }
+          80%  { width: 88%; opacity: 0.9; }
+          100% { width: 88%; opacity: 0.9; }
+        }
+        @keyframes scan-success {
+          0%   { width: 88%;  opacity: 0.9; }
+          100% { width: 100%; opacity: 1; }
+        }
+        @keyframes cx-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(77,232,216,0); }
+          50%       { box-shadow: 0 0 8px 2px rgba(77,232,216,0.18); }
+        }
+        .lumora-input:focus {
+          outline: none;
+          border-color: rgba(77,232,216,0.45) !important;
+        }
+        .lumora-input::placeholder {
+          color: rgba(122,132,148,0.6);
+        }
+        .lumora-scan-btn:hover:not(:disabled) {
+          background: rgba(77,232,216,0.07) !important;
+        }
+        .lumora-scan-btn:disabled {
+          opacity: 0.55;
+          cursor: default;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .lumora-progress-bar { animation: none !important; width: 55% !important; }
+          .lumora-scan-btn     { animation: none !important; }
+        }
+      `}</style>
+
+      {/* Constellation layer */}
+      <ConstellationCanvas scanning={scanning} />
+
+      {/* Full-viewport centred stack */}
       <div
         style={{
-          width: "100%",
-          maxWidth: "480px",
+          position: "relative",
+          zIndex: 1,
+          minHeight: "100vh",
           display: "flex",
           flexDirection: "column",
-          gap: "1.5rem",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "2rem 1.25rem",
+          background: "#050608",
         }}
       >
-        {/* ── Wordmark ──────────────────────────────────────────────── */}
-        <div style={{ textAlign: "center" }}>
-          <span
-            style={{
-              fontFamily: "var(--font-inter, sans-serif)",
-              fontWeight: 700,
-              fontSize: "1.625rem",
-              letterSpacing: "-0.02em",
-              color: "var(--paper)",
-              userSelect: "none",
-            }}
-          >
-            Lumora
-          </span>
-          <p
-            style={{
-              fontFamily: "var(--font-inter, sans-serif)",
-              fontSize: "0.8125rem",
-              color: "var(--ghost)",
-              marginTop: "0.5rem",
-              lineHeight: 1.5,
-            }}
-          >
-            connect a github repository to start asking questions
-          </p>
-        </div>
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "420px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "0.875rem",
+          }}
+        >
+          {/* ── Wordmark ──────────────────────────────────────────────── */}
+          <div style={{ textAlign: "center", marginBottom: "0.25rem" }}>
+            <span
+              style={{
+                ...MONO,
+                fontWeight: 500,
+                fontSize: "18px",
+                letterSpacing: "0.32em",
+                color: "#EDEFF2",
+                userSelect: "none",
+                display: "block",
+              }}
+            >
+              LUMORA
+            </span>
+            <span
+              style={{
+                ...MONO,
+                fontSize: "11px",
+                letterSpacing: "0.04em",
+                color: "#7A8494",
+                marginTop: "0.55rem",
+                display: "block",
+              }}
+            >
+              load a repository to begin scanning
+            </span>
+          </div>
 
-        {/* ── Input + button ────────────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "stretch" }}>
-            {/* URL input */}
+          {/* ── Input strip ──────────────────────────────────────────── */}
+          <div style={{ width: "100%", display: "flex", alignItems: "stretch" }}>
             <input
               ref={inputRef}
               id="repo-url-input"
+              className="lumora-input"
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={disabled}
-              placeholder="https://github.com/owner/repo"
+              placeholder="owner/repo"
               autoComplete="off"
               spellCheck={false}
               aria-label="GitHub repository URL"
               style={{
+                ...MONO,
                 flex: 1,
-                fontFamily: "var(--font-ibm-plex-mono, monospace)",
-                fontSize: "0.8125rem",
-                color: "var(--paper)",
+                fontSize: "12px",
+                color: "#EDEFF2",
                 background: "transparent",
-                border: "1px solid var(--wire)",
-                borderRadius: "4px",
-                padding: "0.625rem 0.75rem",
-                outline: "none",
-                opacity: disabled ? 0.5 : 1,
-                transition: "opacity 0.15s ease, border-color 0.15s ease",
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "var(--ghost)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--wire)";
+                border: "1px solid #3A4250",
+                borderRight: "none",
+                borderRadius: "2px 0 0 2px",
+                padding: "0.6rem 0.75rem",
+                opacity: disabled ? 0.55 : 1,
+                transition: "border-color 0.15s ease, opacity 0.15s ease",
+                minWidth: 0,
               }}
             />
 
-            {/* Submit button */}
             <button
-              id="index-repo-btn"
+              id="scan-repo-btn"
+              className="lumora-scan-btn"
               onClick={handleSubmit}
               disabled={disabled}
               aria-label={
-                phase === "submitting"
-                  ? "Indexing repository…"
-                  : phase === "success"
-                  ? "Repository indexed"
-                  : "Index repository"
+                scanning
+                  ? "Scanning repository…"
+                  : succeeded
+                  ? "Repository scanned"
+                  : "Scan repository"
               }
               style={{
-                fontFamily: "var(--font-ibm-plex-mono, monospace)",
-                fontSize: "0.75rem",
-                color: phase === "success" ? "var(--signal)" : "var(--paper)",
+                ...MONO,
+                fontSize: "11px",
+                letterSpacing: "0.08em",
+                color: succeeded ? "#EDEFF2" : "#4DE8D8",
                 background: "transparent",
-                border: "1px solid var(--wire)",
-                borderRadius: "4px",
-                padding: "0.625rem 1rem",
-                cursor: disabled ? "default" : "pointer",
-                opacity: disabled && phase !== "success" ? 0.6 : 1,
-                transition:
-                  "background 0.15s ease, opacity 0.15s ease, color 0.15s ease",
+                border: "1px solid",
+                borderColor: succeeded ? "#3A4250" : "#4DE8D8",
+                borderRadius: "0 2px 2px 0",
+                padding: "0.6rem 0.9rem",
+                cursor: "pointer",
                 whiteSpace: "nowrap",
                 flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                if (!disabled) {
-                  e.currentTarget.style.background =
-                    "color-mix(in srgb, var(--wire) 35%, transparent)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
+                transition:
+                  "background 0.15s ease, border-color 0.15s ease, color 0.15s ease",
+                animation: !disabled ? "cx-pulse 3s ease-in-out infinite" : "none",
               }}
             >
-              {phase === "submitting"
-                ? "indexing..."
-                : phase === "success"
-                ? "indexed ✓"
-                : "index repository"}
+              {scanning ? "scanning…" : succeeded ? "indexed ✓" : "[ SCAN ]"}
             </button>
           </div>
 
-          {/* Progress bar (submitting only) */}
-          {phase === "submitting" && (
-            <div
-              aria-hidden="true"
-              style={{
-                height: "2px",
-                background: "var(--wire)",
-                borderRadius: "1px",
-                overflow: "hidden",
-              }}
-            >
+          {/* ── Progress track ───────────────────────────────────────── */}
+          <div
+            aria-hidden="true"
+            style={{
+              width: "100%",
+              height: "1px",
+              background: "#3A4250",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            {(scanning || succeeded) && (
               <div
-                className="index-progress-bar"
+                className="lumora-progress-bar"
                 style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
                   height: "100%",
-                  background: "var(--signal)",
-                  borderRadius: "1px",
+                  background: "#4DE8D8",
+                  animation: succeeded
+                    ? "scan-success 0.6s ease-out forwards"
+                    : "scan-progress 4s ease-out forwards",
                 }}
               />
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Help text */}
-          {phase !== "success" && (
-            <p
+          {/* ── Help text ────────────────────────────────────────────── */}
+          {!succeeded && !errorMsg && (
+            <span
               style={{
-                fontFamily: "var(--font-inter, sans-serif)",
-                fontSize: "0.6875rem",
-                color: "var(--ghost)",
-                margin: 0,
-                lineHeight: 1.4,
+                ...MONO,
+                fontSize: "10px",
+                color: "#4A5260",
+                letterSpacing: "0.04em",
+                alignSelf: "flex-start",
               }}
             >
               public github repositories only
-            </p>
+            </span>
           )}
 
-          {/* Error message */}
+          {/* ── Error message ─────────────────────────────────────────── */}
           {errorMsg && phase === "idle" && (
             <p
               role="alert"
               style={{
-                fontFamily: "var(--font-inter, sans-serif)",
-                fontSize: "0.75rem",
-                color: "var(--error)",
+                ...MONO,
+                fontSize: "11px",
+                color: "#C4645A",
                 margin: 0,
+                alignSelf: "flex-start",
                 lineHeight: 1.4,
               }}
             >
@@ -265,6 +477,6 @@ export default function ConnectRepo({ onConnected }: ConnectRepoProps) {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
